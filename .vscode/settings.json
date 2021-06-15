@@ -1,0 +1,14 @@
+{
+    "files.associations": {
+        "*.html": "html",
+        "*.json": "jsonc",
+        "5STRQ0.C": "cpp",
+        "m2.c": "cpp",
+        "5HHBG.C": "cpp",
+        "5HHQR0.C": "cpp",
+        "cmath": "cpp",
+        "algorithm": "cpp",
+        "random": "cpp"
+    },
+    "C_Cpp.errorSquiggles": "Enabled"
+}
