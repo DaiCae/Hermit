@@ -91,107 +91,98 @@ void sort_vector(double A[], int N, double *q)
 
 // Householder（带特征向量）
 int Householder_vector(int n, double A[], double b[], double c[], double *Q)
-
-//QR（带特征向量）
-int QR_vector_old(int N, double *b, double *c, double *q, double eps, int limit)
 {
-    int k, m, u, v;
-    double d, f, h, g, p, r, e, s;
-    d = 0.0;
-    f = 0.0;
-    for (int j = 0; j <= N - 1; j++)
+    double mol, q, value, K;
+    double *alpha = new double[n];
+    // 初始化Q为I矩阵
+    for (int i = 0; i < n; i++)
     {
-        h = eps * (fabs(b[j]) + fabs(c[j]));
-        if (h > d)
-            d = h;
-        m = j;
-        while ((m <= N - 1) && (fabs(c[m]) > d))
-            m = m + 1;
-        if (m != j)
+        for (int j = 0; j < n; j++)
         {
-            do
-            {
-                g = b[j];
-                p = (b[j + 1] - g) / (2.0 * c[j]);
-                r = sqrt(p * p + 1.0);
-                if (p >= 0.0)
-                    b[j] = c[j] / (p + r);
-                else
-                    b[j] = c[j] / (p - r);
-                double h = g - b[j];
-                for (int i = j + 1; i <= N - 1; i++)
-                    b[i] = b[i] - h;
-                f = f + h;
-                p = b[m];
-                e = 1.0;
-                s = 0.0;
-                for (int i = m - 1; i >= j; i--)
-                {
-                    g = e * c[i];
-                    h = e * p;
-                    if (fabs(p) >= fabs(c[i]))
-                    {
-                        e = c[i] / p;
-                        r = sqrt(e * e + 1.0);
-                        c[i + 1] = s * p * r;
-                        s = e / r;
-                        e = 1.0 / r;
-                    }
-                    else
-                    {
-                        e = p / c[i];
-                        r = sqrt(e * e + 1.0);
-                        c[i + 1] = s * c[i] * r;
-                        s = 1.0 / r;
-                        e = e / r;
-                    }
-                    p = e * b[i] - s * g;
-                    b[i + 1] = h + s * (e * g + s * b[i]);
+            Q[i * n + j] = 0.0;
+        }
+        Q[i * n + i] = 1;
+    }
 
-                    for (k = 0; k <= N - 1; k++)
-                    {
-                        u = k * N + i + 1;
-                        v = u - 1;
-                        h = q[u];
-                        q[u] = s * q[v] + e * h;
-                        q[v] = e * q[v] - s * h;
-                    }
-                }
-                c[j] = s * p;
-                b[j] = e * p;
-            } while (fabs(c[j]) > d);
-        }
-        b[j] = b[j] + f;
-    }
-    for (int i = 0; i <= N - 1; i++)
+    for (int i = n - 1; i > 1; i--)
     {
-        k = i;
-        p = b[i];
-        if (i + 1 <= N - 1)
+        q = 0.0;
+        //初始化alpha向量为0
+        alpha[i] = 0.0;
+        for (int j = 0; j < i; j++)
         {
-            int j = i + 1;
-            while ((j <= N - 1) && (b[j] <= p))
+            alpha[j] = A[i * n + j];
+            q += alpha[j] * alpha[j];
+        }
+        // 判断q的值是否小于精度
+        if (q + 1.0 == 1.0)
+        {
+            continue;
+        }
+        mol = sqrt(q);
+        if (alpha[i - 1] > 0.0)
+            mol = -mol;
+        q -= alpha[i - 1] * mol;
+        alpha[i - 1] = alpha[i - 1] - mol;
+
+
+        // 求Q(i+1)矩阵（矩阵减矩阵）
+        for (int j = 0; j <= n-1; j++)
+        {
+            value = 0.0;
+            for (int k = 0; k < i; k++)
+                value += Q[j * n + k] * alpha[k] / q;
+            b[j] = value;
+        }
+        for (int j = 0; j <= n-1; j++)
+        {
+            for (int k = 0; k < i; k++)
             {
-                k = j;
-                p = b[j];
-                j++;
+                Q[j * n + k] = Q[j * n + k] - b[j] * alpha[k];
             }
         }
-        if (k != i)
+
+
+
+
+       // 求A(i+1)矩阵
+        for (int j = 0; j < i + 1; j++)
         {
-            b[k] = b[i];
-            b[i] = p;
-            for (int j = 0; j <= N - 1; j++)
+            value = 0.0;
+            for (int k = 0; k < i + 1; k++)
+                value += A[j * n + k] * alpha[k] / q;
+            b[j] = value;
+        }
+        K = 0;
+        for (int j = 0; j < i + 1; j++)
+        {
+            K += alpha[j] * b[j] / (2 * q);
+        }
+        for (int j = 0; j < i + 1; j++)
+        {
+            c[j] = b[j] - K * alpha[j];
+        }
+        for (int j = 0; j < i + 1; j++)
+        {
+            for (int k = 0; k < i + 1; k++)
             {
-                u = j * N + i;
-                v = j * N + k;
-                p = q[j * N + i];
-                q[j * N + i] = q[j * N + k];
-                q[j * N + k] = p;
+                A[j * n + k] = A[j * n + k] - alpha[j] * c[k] - c[j] * alpha[k];
             }
         }
+
+
     }
-    return (1);
+    
+    // 抽出主、次对角线元素
+    for (int i = 0; i < n - 1; i++)
+    {
+        b[i] = A[i * n + i];
+        c[i] = A[i * n + i + 1];
+    }
+    b[n - 1] = A[n * n - 1];
+    c[n - 1] = 0;
+    delete[] alpha;
+    return 1;
 }
 
 //QR（带特征向量）
@@ -312,7 +303,7 @@ int mysolver_cpu_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d
     hipMemcpy(a, Dev_A, N * N * sizeof(double), hipMemcpyDeviceToHost);
 
     Householder_vector(N, a, b, c, Qalpha);
-    QR_vector_old(N, b, c, Qalpha, eps, l);
+    QR_vector(N, b, c, Qalpha, eps, l);
 
     sort_vector(b, N, Qalpha);
 
@@ -363,3 +354,179 @@ int mysolver_cpu_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d
     free(A_yl);
     return 1;
 }
+
+
+
+__global__ void Householder_step_0(double *Q , int N){
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    
+    //关闭多余线程
+    if (idx >= N) return;
+
+    //初始化Q矩阵为 I 矩阵
+    Q[idx * N + idx] = 1;
+
+}
+
+__global__ void Householder_step_1(double *A ,double *alpha, double *beta, int N, int i){
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    
+    //关闭多余线程
+    if (idx >= N) return;
+
+    if (idx < i)
+    {
+        alpha[idx] = A[i * N + idx];
+        beta[idx] = alpha[idx] * alpha[idx];
+    }else{
+        alpha[idx] = 0.0;
+    }
+
+}
+
+__global__ void Householder_step_2(double *Q ,double *alpha, double *b, double q, int N, int i){
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    
+    //关闭多余线程
+    if (idx >= N) return;
+
+    double value =0.0;
+    for (int k = 0; k < i; k++)
+        value += Q[idx * N + k] * alpha[k] /q;
+    b[idx]=value;
+    __syncthreads();
+
+    for (int k = 0; k < i; k++)
+        Q[idx * N + k] = Q[idx * N + k] - b[idx] * alpha[k];
+    __syncthreads();
+
+}
+
+int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
+{
+    //主次对角线 b c 向量指针
+    double *Dev_b;
+    double *Dev_c;
+
+    //临时向量
+    double *Dev_alpha;
+    double *Dev_beta;
+
+    //乘积矩阵 在设备端指针
+    double *Dev_Q;
+
+    //分配空间 主次对角线
+    hipMalloc((void **)&Dev_b, N * sizeof(double));
+    hipMalloc((void **)&Dev_c, N * sizeof(double));
+
+    hipMalloc((void **)&Dev_alpha, N * sizeof(double));
+    hipMalloc((void **)&Dev_beta, N * sizeof(double));
+
+    //分配空间 乘积矩阵
+    hipMalloc((void **)&Dev_Q, N * N * sizeof(double));
+
+    //定义N维向量的grid
+    dim3 block(1024);
+    dim3 grid((N-1)/block.x + 1);
+
+    //计算需要的最小块数的长度取整
+    int length = (N-1)/32 + 1;
+
+    //定义N维矩阵的grid
+    dim3 Block(32,32);
+    dim3 Grid(length, length);
+
+    //在CPU上申请求和用的缓存数组
+    double *H_Sum = new double[N];
+    double sum,eps=1e-10;
+
+    //Householder 循环分步调用核函数
+    hipLaunchKernelGGL(Householder_step_0,grid,block,0,0, Dev_Q, N);
+    for(int i = N-1; i>1 ;i--)
+    {
+        //=========================================
+        //  初始化alpha向量 合并规约求alpha 的 mol
+        //=========================================
+        hipLaunchKernelGGL(Householder_step_1,grid,block,0,0, Dev_A, Dev_alpha, Dev_beta, N, i);
+        hipDeviceSynchronize();
+        hipMemcpy(H_Sum, Dev_beta, N * sizeof(double), hipMemcpyDeviceToHost);
+        sum = 0;
+        for (int k = 0; k < N; k++){
+            sum += H_Sum[k];    //sum 为 q
+        }
+        //检查是否为0
+        if( (sum-eps)<0.0) continue;
+        double mol =sqrtl(sum);
+        
+        //将alpha[i-1]拷贝到cpu端
+        hipMemcpy(H_Sum, Dev_alpha + i - 1, 1 * sizeof(double), hipMemcpyDeviceToHost);
+        if(H_Sum[0] >0.0)
+            mol = -mol;
+        sum -= H_Sum[0] * mol;
+        H_Sum[0] = H_Sum[0] - mol;
+        //写回alpha[i-1]
+        hipMemcpy(Dev_alpha + i - 1, H_Sum, 1 * sizeof(double), hipMemcpyHostToDevice);
+        
+        //=========================================
+        // 求Q(i+1)矩阵（矩阵减矩阵）
+        //=========================================
+
+    }
+
+    // sort_vector(b, N, Qalpha);
+
+
+    // //抽出一半特征值
+    // for (int i = 0; i < N / 2; i++)
+    //     c[i] = b[i * 2];
+
+    // //抽出一半特征向量
+    // for (int i = 0; i < N / 2; i++)
+    // {
+    //     if (fabs(a[N * (N - 1) + i * 2]) >= Eps)
+    //     {
+    //         for (int j = 0; j < N; j++)
+    //         {
+    //             y_l[j * N + i] = Qalpha[j * N + i * 2];
+    //         }
+    //     }
+    //     else
+    //     {
+    //         for (int j = 0; j < N; j++)
+    //         {
+    //             y_l[j * N + i] = Qalpha[j * N + i * 2 + 1];
+    //         }
+    //     }
+    // }
+
+
+    // //实部虚部合并为复数
+    // for (int i = 0; i < N / 2; i++)
+    // {
+    //     for (int j = 0; j < N / 2; j++)
+    //     {
+    //         A_yl[i * N / 2 + j].y = y_l[i * N + j];
+    //         A_yl[i * N / 2 + j].x = y_l[(N * N / 2) + i * N + j];
+    //     }
+    // }
+
+
+    // //结果拷回
+    // hipMemcpy(Dev_W, c, N / 2 * sizeof(double), hipMemcpyHostToDevice);
+    // hipMemcpy(d_A, A_yl, N * N / 2 * sizeof(double), hipMemcpyHostToDevice);
+
+    hipFree(Dev_b);
+    hipFree(Dev_c);
+
+    return 1;
+}
+
+
+
+
+
+
+
+
+
+
