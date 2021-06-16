@@ -370,6 +370,8 @@ __global__ void Householder_step_0(double *Q , int N){
     if (idx >= N) return;
 
     //初始化Q矩阵为 I 矩阵
+    for (int j = 0; j < N; j++)
+        Q[j * n + idx] = 0.0;
     Q[idx * N + idx] = 1;
 
 }
@@ -386,6 +388,7 @@ __global__ void Householder_step_1(double *A ,double *alpha, double *beta, int N
         beta[idx] = alpha[idx] * alpha[idx];
     }else{
         alpha[idx] = 0.0;
+        beta[idx] = 0.0;
     }
 
 }
