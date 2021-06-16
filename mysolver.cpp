@@ -158,6 +158,7 @@ int Householder_vector(int n, double A[], double b[], double c[], double *Q)
         {
             K += alpha[j] * b[j] / (2 * q);
         }
+
         for (int j = 0; j < i + 1; j++)
         {
             c[j] = b[j] - K * alpha[j];
@@ -384,12 +385,13 @@ __global__ void Householder_step_1(double *A ,double *alpha, double *beta, int N
 
 }
 
-__global__ void Householder_step_2(double *Q ,double *alpha, double *b, double q, int N, int i){
+__global__ void Householder_step_2(double *Q ,double *alpha, double *beta, double *b, double q, int N, int i){
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
     
     //关闭多余线程
     if (idx >= N) return;
-
+    //======================================
+    // 求Q(i+1)矩阵（矩阵减矩阵）
     double value =0.0;
     for (int k = 0; k < i; k++)
         value += Q[idx * N + k] * alpha[k] /q;
@@ -400,6 +402,52 @@ __global__ void Householder_step_2(double *Q ,double *alpha, double *b, double q
         Q[idx * N + k] = Q[idx * N + k] - b[idx] * alpha[k];
     __syncthreads();
 
+    //idx < i+1
+    if(idx >= i + 1) return;
+
+    //======================================
+    // 求A(i+1)矩阵
+    value = 0.0;
+    for (int k = 0; k < i + 1; k++)
+        value += A[idx * N + k] * alpha[k] / q;
+    b[idx] = value;
+
+    // 求K
+    beta[idx] = alpha[idx] * b[idx] / (2 * q);
+}
+
+__global__ void Householder_step_3(double *A ,double *alpha, double *b, double *c, double K, int N, int i){
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    
+    //关闭多余线程
+    //idx < i+1
+    if(idx >= i + 1) return;
+
+    //======================================
+    // 求A(i+1)矩阵
+    c[idx] = b[idx] - K * alpha[idx];
+    __syncthreads();
+    for (int k = 0; k < i + 1; k++)
+    {
+        A[idx * N + k] = A[idx * N + k] - alpha[idx] * c[k] - c[idx] * alpha[k];
+    }
+}
+
+__global__ void Householder_step_4(double *A ,double *b, double *c, int N){
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    
+    //关闭多余线程
+    if (idx >= N-1) return;
+
+    // 抽出主、次对角线元素
+    b[idx] = A[idx * N + idx];
+    c[idx] = A[idx * N + idx + 1];
+
+    if(idx==0)
+    {
+        b[N-1]=A[N * N - 1];
+        c[N-1]=0.0;
+    }
 }
 
 int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
@@ -429,16 +477,16 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
     dim3 block(1024);
     dim3 grid((N-1)/block.x + 1);
 
-    //计算需要的最小块数的长度取整
-    int length = (N-1)/32 + 1;
+    // //计算需要的最小块数的长度取整
+    // int length = (N-1)/32 + 1;
 
-    //定义N维矩阵的grid
-    dim3 Block(32,32);
-    dim3 Grid(length, length);
+    // //定义N维矩阵的grid
+    // dim3 Block(32,32);
+    // dim3 Grid(length, length);
 
     //在CPU上申请求和用的缓存数组
     double *H_Sum = new double[N];
-    double sum,eps=1e-10;
+    double sum,eps=1e-12;
 
     //Householder 循环分步调用核函数
     hipLaunchKernelGGL(Householder_step_0,grid,block,0,0, Dev_Q, N);
@@ -469,18 +517,46 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
         
         //=========================================
         // 求Q(i+1)矩阵（矩阵减矩阵）
+        // 求出K
         //=========================================
+        hipLaunchKernelGGL(Householder_step_2,grid,block,0,0, Dev_Q, Dev_alpha, Dev_beta, Dev_b, sum, N, i);
+        hipDeviceSynchronize();
+        hipMemcpy(H_Sum, Dev_beta, N * sizeof(double), hipMemcpyDeviceToHost);
+        sum = 0;
+        for (int k = 0; k < N; k++)
+            sum += H_Sum[k];    //sum 为 K
 
+        //=========================================
+        // 求A(i+1)矩阵
+        //=========================================
+        hipLaunchKernelGGL(Householder_step_3,grid,block,0,0, Dev_A, Dev_alpha, Dev_b, Dev_c, sum, N, i);
+        hipDeviceSynchronize();
     }
 
-    // sort_vector(b, N, Qalpha);
+    //=========================================
+    // 抽出主、次对角线元素
+    //=========================================
+    hipLaunchKernelGGL(Householder_step_4,grid,block,0,0, Dev_A, Dev_b, Dev_c, N);
+    hipDeviceSynchronize();
 
+    hipFree(Dev_alpha);
+    hipFree(Dev_beta);
 
-    // //抽出一半特征值
-    // for (int i = 0; i < N / 2; i++)
-    //     c[i] = b[i * 2];
+    double *H_c = new double[N];
+    double *H_Q = new double[N * N];
 
-    // //抽出一半特征向量
+    hipMemcpy(H_Sum, Dev_b, N * sizeof(double), hipMemcpyDeviceToHost);
+    hipMemcpy(H_c, Dev_c, N * sizeof(double), hipMemcpyDeviceToHost);
+    hipMemcpy(H_Q, Dev_Q, N * N * sizeof(double), hipMemcpyDeviceToHost);
+
+    QR_vector(N, H_Sum, H_c, H_Q, eps, 0);
+    sort_vector(H_Sum, N, H_Q);
+
+    //抽出一半特征值
+    for (int i = 0; i < N / 2; i++)
+        H_c[i] = H_Sum[i * 2];
+
+    //抽出一半特征向量
     // for (int i = 0; i < N / 2; i++)
     // {
     //     if (fabs(a[N * (N - 1) + i * 2]) >= Eps)

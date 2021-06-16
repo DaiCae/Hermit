@@ -8,7 +8,8 @@
         "5HHQR0.C": "cpp",
         "cmath": "cpp",
         "algorithm": "cpp",
-        "random": "cpp"
+        "random": "cpp",
+        "new": "cpp"
     },
     "C_Cpp.errorSquiggles": "Enabled"
 }
