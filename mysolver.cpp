@@ -314,21 +314,26 @@ int mysolver_cpu_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d
         c[i] = b[i * 2];
 
     //抽出一半特征向量
+    // for (int i = 0; i < N / 2; i++)
+    // {
+    //     if (fabs(a[N * (N - 1) + i * 2]) >= Eps)
+    //     {
+    //         for (int j = 0; j < N; j++)
+    //         {
+    //             y_l[j * N + i] = Qalpha[j * N + i * 2];
+    //         }
+    //     }
+    //     else
+    //     {
+    //         for (int j = 0; j < N; j++)
+    //         {
+    //             y_l[j * N + i] = Qalpha[j * N + i * 2 + 1];
+    //         }
+    //     }
+    // }
     for (int i = 0; i < N / 2; i++)
-    {
-        if (fabs(a[N * (N - 1) + i * 2]) >= Eps)
-        {
-            for (int j = 0; j < N; j++)
-            {
-                y_l[j * N + i] = Qalpha[j * N + i * 2];
-            }
-        }
-        else
-        {
-            for (int j = 0; j < N; j++)
-            {
-                y_l[j * N + i] = Qalpha[j * N + i * 2 + 1];
-            }
+    {    for(int j=0; j<N;j++){
+            y_l[j * N + i] = Qalpha[j * N + i * 2];
         }
     }
 
@@ -385,7 +390,7 @@ __global__ void Householder_step_1(double *A ,double *alpha, double *beta, int N
 
 }
 
-__global__ void Householder_step_2(double *Q ,double *alpha, double *beta, double *b, double q, int N, int i){
+__global__ void Householder_step_2(double *Q ,double *A, double *alpha, double *beta, double *b, double q, int N, int i){
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
     
     //关闭多余线程
@@ -519,7 +524,7 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
         // 求Q(i+1)矩阵（矩阵减矩阵）
         // 求出K
         //=========================================
-        hipLaunchKernelGGL(Householder_step_2,grid,block,0,0, Dev_Q, Dev_alpha, Dev_beta, Dev_b, sum, N, i);
+        hipLaunchKernelGGL(Householder_step_2,grid,block,0,0, Dev_Q, Dev_A, Dev_alpha, Dev_beta, Dev_b, sum, N, i);
         hipDeviceSynchronize();
         hipMemcpy(H_Sum, Dev_beta, N * sizeof(double), hipMemcpyDeviceToHost);
         sum = 0;
@@ -556,44 +561,35 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
     for (int i = 0; i < N / 2; i++)
         H_c[i] = H_Sum[i * 2];
 
+    double *y_l = new double[N * N];
+
     //抽出一半特征向量
-    // for (int i = 0; i < N / 2; i++)
-    // {
-    //     if (fabs(a[N * (N - 1) + i * 2]) >= Eps)
-    //     {
-    //         for (int j = 0; j < N; j++)
-    //         {
-    //             y_l[j * N + i] = Qalpha[j * N + i * 2];
-    //         }
-    //     }
-    //     else
-    //     {
-    //         for (int j = 0; j < N; j++)
-    //         {
-    //             y_l[j * N + i] = Qalpha[j * N + i * 2 + 1];
-    //         }
-    //     }
-    // }
+    for (int i = 0; i < N / 2; i++)
+    {    for(int j=0; j<N;j++){
+            y_l[j * N + i] = H_Q[j * N + i * 2];
+        }
+    }
+
+    hipDoubleComplex *A_yl = (hipDoubleComplex *)malloc(N / 2 * N / 2 * sizeof(hipDoubleComplex));
+
+    //实部虚部合并为复数
+    for (int i = 0; i < N / 2; i++)
+    {
+        for (int j = 0; j < N / 2; j++)
+        {
+            A_yl[i * N / 2 + j].y = y_l[i * N + j];
+            A_yl[i * N / 2 + j].x = y_l[(N * N / 2) + i * N + j];
+        }
+    }
 
 
-    // //实部虚部合并为复数
-    // for (int i = 0; i < N / 2; i++)
-    // {
-    //     for (int j = 0; j < N / 2; j++)
-    //     {
-    //         A_yl[i * N / 2 + j].y = y_l[i * N + j];
-    //         A_yl[i * N / 2 + j].x = y_l[(N * N / 2) + i * N + j];
-    //     }
-    // }
-
-
-    // //结果拷回
-    // hipMemcpy(Dev_W, c, N / 2 * sizeof(double), hipMemcpyHostToDevice);
-    // hipMemcpy(d_A, A_yl, N * N / 2 * sizeof(double), hipMemcpyHostToDevice);
+    //结果拷回
+    hipMemcpy(Dev_W, H_c, N / 2 * sizeof(double), hipMemcpyHostToDevice);
+    hipMemcpy(d_A, A_yl, N * N / 2 * sizeof(double), hipMemcpyHostToDevice);
 
     hipFree(Dev_b);
     hipFree(Dev_c);
-
+    printf("OK!");
     return 1;
 }
 

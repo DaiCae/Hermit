@@ -120,7 +120,8 @@ void solverDnZheevd(solverEigMode jobz,
     //求解特征值和特征向量
     else
     {
-        mysolver_cpu_vector(N, dev_A, d_W, d_A);
+        // mysolver_cpu_vector(N, dev_A, d_W, d_A);
+        mysolver_vector(N, dev_A, d_W, d_A);
     }
 
     hipFree(dev_A);
