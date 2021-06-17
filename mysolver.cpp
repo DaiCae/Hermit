@@ -134,6 +134,12 @@ int Householder_vector(int n, double A[], double b[], double c[], double *Q)
                 value += Q[j * n + k] * alpha[k] / q;
             b[j] = value;
         }
+
+        // printf("\n");
+        // for(int l=0;l<n;l++)
+        //     printf("%12.8lf,", b[l]);
+        // printf("\n\n");
+
         for (int j = 0; j <= n-1; j++)
         {
             for (int k = 0; k < i; k++)
@@ -171,7 +177,7 @@ int Householder_vector(int n, double A[], double b[], double c[], double *Q)
             }
         }
 
-
+        // break;
     }
     
     // 抽出主、次对角线元素
@@ -187,7 +193,7 @@ int Householder_vector(int n, double A[], double b[], double c[], double *Q)
 }
 
 //QR（带特征向量）
-int QR_vector(int N, double *b, double *c, double *q, double eps, int limit){
+int QR_vector(int N, double *b, double *c, double *q, double eps){
     // N 为矩阵阶数
     // b[] 为主对角线元素
     // c[] 为次对角线元素
@@ -289,7 +295,6 @@ int QR_vector(int N, double *b, double *c, double *q, double eps, int limit){
 //求解特征值和特征向量
 int mysolver_cpu_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
 {
-    int l = 1000;
     //原矩阵
     double *a = new double[N * N];
     double *Qalpha = new double[N * N];
@@ -302,9 +307,17 @@ int mysolver_cpu_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d
     double Eps = 1e-8;
     hipDoubleComplex *A_yl = (hipDoubleComplex *)malloc(N / 2 * N / 2 * sizeof(hipDoubleComplex));
     hipMemcpy(a, Dev_A, N * N * sizeof(double), hipMemcpyDeviceToHost);
-
+    
+    time_t start, end;
+    start = clock(); 
     Householder_vector(N, a, b, c, Qalpha);
-    QR_vector(N, b, c, Qalpha, eps, l);
+    end = clock();
+    printf("HS CPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
+    
+    start = clock();
+    QR_vector(N, b, c, Qalpha, eps);
+    end = clock();
+    printf("QR CPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
 
     sort_vector(b, N, Qalpha);
 
@@ -363,20 +376,24 @@ int mysolver_cpu_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d
 
 
 
-__global__ void Householder_step_0(double *Q , int N){
+__global__ void Householder_step_0(double *Q , int N)
+{
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    // int idy = threadIdx.y + blockIdx.y * blockDim.y;
     
     //关闭多余线程
     if (idx >= N) return;
+    // if (idy >= N) return;
 
     //初始化Q矩阵为 I 矩阵
     for (int j = 0; j < N; j++)
-        Q[j * n + idx] = 0.0;
+        Q[j * N + idx] = 0.0;
     Q[idx * N + idx] = 1;
 
 }
 
-__global__ void Householder_step_1(double *A ,double *alpha, double *beta, int N, int i){
+__global__ void Householder_step_1(double *A ,double *alpha, double *beta, int N, int i)
+{
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
     
     //关闭多余线程
@@ -393,7 +410,8 @@ __global__ void Householder_step_1(double *A ,double *alpha, double *beta, int N
 
 }
 
-__global__ void Householder_step_2(double *Q ,double *A, double *alpha, double *beta, double *b, double q, int N, int i){
+__global__ void Householder_step_2_0(double *Q ,double *alpha, double *b, double q, int N, int i)
+{
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
     
     //关闭多余线程
@@ -405,17 +423,88 @@ __global__ void Householder_step_2(double *Q ,double *A, double *alpha, double *
         value += Q[idx * N + k] * alpha[k] /q;
     b[idx]=value;
     __syncthreads();
+    
+    // if(idx==0){
+    //     printf("\n");
+    //     for(int l=0;l<N;l++)
+    //         printf("%12.8lf,", b[l]);
+    //     printf("\n\n");
+    // }
 
+}
+
+__global__ void Householder_step_2_1(double *Q ,double *alpha, double *b, double q, int N, int i)
+{
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
     for (int k = 0; k < i; k++)
         Q[idx * N + k] = Q[idx * N + k] - b[idx] * alpha[k];
     __syncthreads();
+}
 
+__global__ void Householder_step_2_2(double *Q ,double *alpha, double *b, double q, int N, int i)
+{
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if(idx==0){
+        // 求Q(i+1)矩阵（矩阵减矩阵）
+        for (int j = 0; j <= N-1; j++)
+        {
+            double value = 0.0;
+            for (int k = 0; k < i; k++)
+                value += Q[j * N + k] * alpha[k] / q;
+            b[j] = value;
+        }
+
+        // printf("\n");
+        // for(int l=0;l<n;l++)
+        //     printf("%12.8lf,", b[l]);
+        // printf("\n\n");
+
+        for (int j = 0; j <= N-1; j++)
+        {
+            for (int k = 0; k < i; k++)
+            {
+                Q[j * N + k] = Q[j * N + k] - b[j] * alpha[k];
+            }
+        }
+    }
+}
+
+__global__ void Householder_step_2_3(double *Q ,double *alpha, double *b, double q, int N, int i)
+{
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if(idx >N-1) return;
+    
+    // 求Q(i+1)矩阵（矩阵减矩阵）
+
+    double value = 0.0;
+    for (int k = 0; k < i; k++)
+        value += Q[idx * N + k] * alpha[k] / q;
+    b[idx] = value;
+        
+
+        // printf("\n");
+        // for(int l=0;l<n;l++)
+        //     printf("%12.8lf,", b[l]);
+        // printf("\n\n");
+
+
+    for (int k = 0; k < i; k++)
+    {
+        Q[idx * N + k] = Q[idx * N + k] - b[idx] * alpha[k];
+    }
+
+    
+}
+
+__global__ void Householder_step_2(double *A, double *alpha, double *beta, double *b, double q, int N, int i)
+{
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
     //idx < i+1
     if(idx >= i + 1) return;
 
     //======================================
     // 求A(i+1)矩阵
-    value = 0.0;
+    double value = 0.0;
     for (int k = 0; k < i + 1; k++)
         value += A[idx * N + k] * alpha[k] / q;
     b[idx] = value;
@@ -424,7 +513,8 @@ __global__ void Householder_step_2(double *Q ,double *A, double *alpha, double *
     beta[idx] = alpha[idx] * b[idx] / (2 * q);
 }
 
-__global__ void Householder_step_3(double *A ,double *alpha, double *b, double *c, double K, int N, int i){
+__global__ void Householder_step_3(double *alpha, double *b, double *c, double K, int N, int i)
+{
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
     
     //关闭多余线程
@@ -435,13 +525,24 @@ __global__ void Householder_step_3(double *A ,double *alpha, double *b, double *
     // 求A(i+1)矩阵
     c[idx] = b[idx] - K * alpha[idx];
     __syncthreads();
+}
+
+__global__ void Householder_step_4(double *A ,double *alpha, double *c, int N, int i)
+{
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    
+    //关闭多余线程
+    //idx < i+1
+    if(idx >= i + 1) return;
+
     for (int k = 0; k < i + 1; k++)
     {
         A[idx * N + k] = A[idx * N + k] - alpha[idx] * c[k] - c[idx] * alpha[k];
     }
 }
 
-__global__ void Householder_step_4(double *A ,double *b, double *c, int N){
+__global__ void Householder_step_5(double *A ,double *b, double *c, int N)
+{
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
     
     //关闭多余线程
@@ -460,6 +561,10 @@ __global__ void Householder_step_4(double *A ,double *b, double *c, int N){
 
 int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
 {
+
+    
+    time_t start, end;
+    start = clock();
     //主次对角线 b c 向量指针
     double *Dev_b;
     double *Dev_c;
@@ -483,8 +588,10 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
 
     //定义N维向量的grid
     dim3 block(1024);
-    dim3 grid((N-1)/block.x + 1);
-
+    dim3 grid((N-1)/block.x + 1,1);
+    
+    printf("block size: %d | grid size: %d\n",block.x,grid.x);
+    
     // //计算需要的最小块数的长度取整
     // int length = (N-1)/32 + 1;
 
@@ -497,13 +604,15 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
     double sum,eps=1e-12;
 
     //Householder 循环分步调用核函数
-    hipLaunchKernelGGL(Householder_step_0,grid,block,0,0, Dev_Q, N);
+    // hipLaunchKernelGGL(Householder_step_0,grid,block,0,0, Dev_Q, N);
+    Householder_step_0<<<grid,block>>>(Dev_Q, N);//调用核函数
     for(int i = N-1; i>1 ;i--)
     {
         //=========================================
         //  初始化alpha向量 合并规约求alpha 的 mol
         //=========================================
-        hipLaunchKernelGGL(Householder_step_1,grid,block,0,0, Dev_A, Dev_alpha, Dev_beta, N, i);
+        // hipLaunchKernelGGL(Householder_step_1,grid,block,0,0, Dev_A, Dev_alpha, Dev_beta, N, i);
+        Householder_step_1<<<grid,block>>>(Dev_A, Dev_alpha, Dev_beta, N, i);//调用核函数
         hipDeviceSynchronize();
         hipMemcpy(H_Sum, Dev_beta, N * sizeof(double), hipMemcpyDeviceToHost);
         sum = 0;
@@ -511,7 +620,12 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
             sum += H_Sum[k];    //sum 为 q
         }
         //检查是否为0
-        if( (sum-eps)<0.0) continue;
+        if (sum + 1.0 == 1.0) 
+        {
+            continue;
+            printf("continue %d\n",i);
+        }
+
         double mol =sqrtl(sum);
         
         //将alpha[i-1]拷贝到cpu端
@@ -527,7 +641,11 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
         // 求Q(i+1)矩阵（矩阵减矩阵）
         // 求出K
         //=========================================
-        hipLaunchKernelGGL(Householder_step_2,grid,block,0,0, Dev_Q, Dev_A, Dev_alpha, Dev_beta, Dev_b, sum, N, i);
+        // hipLaunchKernelGGL(Householder_step_2,grid,block,0,0, Dev_Q, Dev_A, Dev_alpha, Dev_beta, Dev_b, sum, N, i);
+        // Householder_step_2_0<<<grid,block>>>(Dev_Q ,Dev_alpha, Dev_b, sum, N, i);//调用核函数
+        // Householder_step_2_1<<<grid,block>>>(Dev_Q ,Dev_alpha, Dev_b, sum, N, i);//调用核函数
+        Householder_step_2_3<<<grid,block>>>(Dev_Q ,Dev_alpha, Dev_b, sum, N, i);//调用核函数
+        Householder_step_2<<<grid,block>>>(Dev_A, Dev_alpha, Dev_beta, Dev_b, sum, N, i);//调用核函数
         hipDeviceSynchronize();
         hipMemcpy(H_Sum, Dev_beta, N * sizeof(double), hipMemcpyDeviceToHost);
         sum = 0;
@@ -537,14 +655,18 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
         //=========================================
         // 求A(i+1)矩阵
         //=========================================
-        hipLaunchKernelGGL(Householder_step_3,grid,block,0,0, Dev_A, Dev_alpha, Dev_b, Dev_c, sum, N, i);
+        // hipLaunchKernelGGL(Householder_step_3,grid,block,0,0, Dev_A, Dev_alpha, Dev_b, Dev_c, sum, N, i);
+        Householder_step_3<<<grid,block>>>(Dev_alpha, Dev_b, Dev_c, sum, N, i);//调用核函数
+        Householder_step_4<<<grid,block>>>(Dev_A, Dev_alpha, Dev_c, N, i);//调用核函数
         hipDeviceSynchronize();
+
     }
 
     //=========================================
     // 抽出主、次对角线元素
     //=========================================
-    hipLaunchKernelGGL(Householder_step_4,grid,block,0,0, Dev_A, Dev_b, Dev_c, N);
+    // hipLaunchKernelGGL(Householder_step_4,grid,block,0,0, Dev_A, Dev_b, Dev_c, N);
+    Householder_step_5<<<grid,block>>>(Dev_A, Dev_b, Dev_c, N);//调用核函数
     hipDeviceSynchronize();
 
     hipFree(Dev_alpha);
@@ -556,8 +678,21 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
     hipMemcpy(H_Sum, Dev_b, N * sizeof(double), hipMemcpyDeviceToHost);
     hipMemcpy(H_c, Dev_c, N * sizeof(double), hipMemcpyDeviceToHost);
     hipMemcpy(H_Q, Dev_Q, N * N * sizeof(double), hipMemcpyDeviceToHost);
+    
+    end = clock();
+    printf("HS GPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
 
-    QR_vector(N, H_Sum, H_c, H_Q, eps, 0);
+    // for (int i = 0; i < N * N; i++)
+    // {    
+    //     Q[i] = H_Q[i];
+    // }
+
+    start = clock();
+    QR_vector(N, H_Sum, H_c, H_Q, eps);
+    end = clock();
+    printf("QR CPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
+
+
     sort_vector(H_Sum, N, H_Q);
 
     //抽出一半特征值
@@ -568,7 +703,8 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
 
     //抽出一半特征向量
     for (int i = 0; i < N / 2; i++)
-    {    for(int j=0; j<N;j++){
+    {    
+        for(int j=0; j<N;j++){
             y_l[j * N + i] = H_Q[j * N + i * 2];
         }
     }
@@ -585,19 +721,15 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
         }
     }
 
-
-    //结果拷回
+    // //结果拷回
     hipMemcpy(Dev_W, H_c, N / 2 * sizeof(double), hipMemcpyHostToDevice);
     hipMemcpy(d_A, A_yl, N * N / 2 * sizeof(double), hipMemcpyHostToDevice);
 
     hipFree(Dev_b);
     hipFree(Dev_c);
-    printf("OK!");
+    hipFree(Dev_Q);
     return 1;
 }
-
-
-
 
 
 

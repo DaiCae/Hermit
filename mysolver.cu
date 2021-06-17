@@ -30,6 +30,8 @@ void symmat(double H[], int N)
             {
                 A[i * n + j] = (rand() % 20 - 10);
                 B[i * n + j] = (rand() % 20 - 10);
+                A[i * n + j] = A[i * n + j] / 11 ;
+                B[i * n + j] = B[i * n + j] / 11 ;
             }
             else
             {
@@ -112,6 +114,7 @@ int Householder_vector(int n, double A[], double b[], double c[], double *Q)
         if (q + 1.0 == 1.0)
         {
             continue;
+            printf("continue %d\n",i);
         }
         mol = sqrt(q);
         if (alpha[i - 1] > 0.0)
@@ -171,7 +174,6 @@ int Householder_vector(int n, double A[], double b[], double c[], double *Q)
             }
         }
 
-        break;
     }
     
     // 抽出主、次对角线元素
@@ -286,6 +288,91 @@ int QR_vector(int N, double *b, double *c, double *q, double eps){
     return (1);
 }
 
+__global__ void QR_gpu_part(double *Q , double s, double e, int N, int i)
+{
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    // int idy = threadIdx.y + blockIdx.y * blockDim.y;
+    
+    //关闭多余线程
+    if (idx >= N) return;
+    // if (idy >= N) return;
+    
+
+    int u = idx * N + i + 1;
+    int v = u - 1;
+    double h = Q[u];
+    Q[u] = s * Q[v] + e * h;
+    Q[v] = e * Q[v] - s * h;
+
+}
+
+//QR（带特征向量）
+int QR_vector_gpu(int N, double *b, double *c, double *Dev_Q, double eps){
+    // N 为矩阵阶数
+    // b[] 为主对角线元素
+    // c[] 为次对角线元素
+    
+    double h, p, r;
+    double f = 0.0;
+    for (int k = 0; k <= N - 1; k++){
+        do{
+            double g = b[k];
+            // (b[k+1] - b[k]) / (2 * c[k])
+            p = (b[k + 1] - g) / (2.0 * c[k]);
+            r = sqrt(p * p + 1.0);
+            if (p >= 0.0)
+                b[k] = c[k] / (p + r);
+            else
+                b[k] = c[k] / (p - r);
+            h = g - b[k];
+
+            for (int i = k + 1; i <= N - 1; i++)
+                b[i] = b[i] - h;
+            f = f + h;
+
+            p = b[N-1];
+
+            double e = 1.0;
+            double s = 0.0;
+            for (int i = N - 2; i >= k; i--)
+            {
+                g = e * c[i];
+                h = e * p;
+                if (fabs(p) >= fabs(c[i]))
+                {
+                    e = c[i] / p;
+                    r = sqrt(e * e + 1.0);
+                    c[i + 1] = s * p * r;
+                    s = e / r;
+                    e = 1.0 / r;
+                }
+                else
+                {
+                    e = p / c[i];
+                    r = sqrt(e * e + 1.0);
+                    c[i + 1] = s * c[i] * r;
+                    s = 1.0 / r;
+                    e = e / r;
+                }
+                p = e * b[i] - s * g;
+                b[i + 1] = h + s * (e * g + s * b[i]);
+                    //=======================
+                    //定义N维向量的grid
+                    dim3 block(1024);
+                    dim3 grid((N-1)/block.x + 1,1);
+                    QR_gpu_part<<<grid,block>>>(Dev_Q, s, e, N, i);//调用核函数
+                    cudaDeviceSynchronize();
+                    //=======================
+            }
+            c[k] = s * p;
+            b[k] = e * p;
+        } while (fabs(c[k]) > eps);
+        
+        b[k] = b[k] + f;
+    }
+    return (1);
+}
+
 //求解特征值和特征向量
 // int mysolver_cpu_vector(int N, double *Dev_A, double *Dev_W, double *d_A)
 int mysolver_cpu_vector(int N, double *Dev_A, double *Dev_W, double *Q)
@@ -343,7 +430,8 @@ int mysolver_cpu_vector(int N, double *Dev_A, double *Dev_W, double *Q)
 
 
 
-__global__ void Householder_step_0(double *Q , int N){
+__global__ void Householder_step_0(double *Q , int N)
+{
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
     // int idy = threadIdx.y + blockIdx.y * blockDim.y;
     
@@ -358,7 +446,8 @@ __global__ void Householder_step_0(double *Q , int N){
 
 }
 
-__global__ void Householder_step_1(double *A ,double *alpha, double *beta, int N, int i){
+__global__ void Householder_step_1(double *A ,double *alpha, double *beta, int N, int i)
+{
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
     
     //关闭多余线程
@@ -375,7 +464,8 @@ __global__ void Householder_step_1(double *A ,double *alpha, double *beta, int N
 
 }
 
-__global__ void Householder_step_2(double *Q ,double *A, double *alpha, double *beta, double *b, double q, int N, int i){
+__global__ void Householder_step_2_0(double *Q ,double *alpha, double *b, double q, int N, int i)
+{
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
     
     //关闭多余线程
@@ -387,7 +477,7 @@ __global__ void Householder_step_2(double *Q ,double *A, double *alpha, double *
         value += Q[idx * N + k] * alpha[k] /q;
     b[idx]=value;
     __syncthreads();
-
+    
     // if(idx==0){
     //     printf("\n");
     //     for(int l=0;l<N;l++)
@@ -395,16 +485,77 @@ __global__ void Householder_step_2(double *Q ,double *A, double *alpha, double *
     //     printf("\n\n");
     // }
 
+}
+__global__ void Householder_step_2_1(double *Q ,double *alpha, double *b, double q, int N, int i)
+{
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
     for (int k = 0; k < i; k++)
         Q[idx * N + k] = Q[idx * N + k] - b[idx] * alpha[k];
     __syncthreads();
+}
+__global__ void Householder_step_2_2(double *Q ,double *alpha, double *b, double q, int N, int i)
+{
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if(idx==0){
+        // 求Q(i+1)矩阵（矩阵减矩阵）
+        for (int j = 0; j <= N-1; j++)
+        {
+            double value = 0.0;
+            for (int k = 0; k < i; k++)
+                value += Q[j * N + k] * alpha[k] / q;
+            b[j] = value;
+        }
 
+        // printf("\n");
+        // for(int l=0;l<n;l++)
+        //     printf("%12.8lf,", b[l]);
+        // printf("\n\n");
+
+        for (int j = 0; j <= N-1; j++)
+        {
+            for (int k = 0; k < i; k++)
+            {
+                Q[j * N + k] = Q[j * N + k] - b[j] * alpha[k];
+            }
+        }
+    }
+}
+__global__ void Householder_step_2_3(double *Q ,double *alpha, double *b, double q, int N, int i)
+{
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if(idx >N-1) return;
+    
+    // 求Q(i+1)矩阵（矩阵减矩阵）
+
+    double value = 0.0;
+    for (int k = 0; k < i; k++)
+        value += Q[idx * N + k] * alpha[k] / q;
+    b[idx] = value;
+        
+
+        // printf("\n");
+        // for(int l=0;l<n;l++)
+        //     printf("%12.8lf,", b[l]);
+        // printf("\n\n");
+
+
+    for (int k = 0; k < i; k++)
+    {
+        Q[idx * N + k] = Q[idx * N + k] - b[idx] * alpha[k];
+    }
+
+    
+}
+
+__global__ void Householder_step_2(double *A, double *alpha, double *beta, double *b, double q, int N, int i)
+{
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
     //idx < i+1
     if(idx >= i + 1) return;
 
     //======================================
     // 求A(i+1)矩阵
-    value = 0.0;
+    double value = 0.0;
     for (int k = 0; k < i + 1; k++)
         value += A[idx * N + k] * alpha[k] / q;
     b[idx] = value;
@@ -413,7 +564,8 @@ __global__ void Householder_step_2(double *Q ,double *A, double *alpha, double *
     beta[idx] = alpha[idx] * b[idx] / (2 * q);
 }
 
-__global__ void Householder_step_3(double *A ,double *alpha, double *b, double *c, double K, int N, int i){
+__global__ void Householder_step_3(double *alpha, double *b, double *c, double K, int N, int i)
+{
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
     
     //关闭多余线程
@@ -426,7 +578,8 @@ __global__ void Householder_step_3(double *A ,double *alpha, double *b, double *
     __syncthreads();
 }
 
-__global__ void Householder_step_4(double *A ,double *alpha, double *b, double *c, double K, int N, int i){
+__global__ void Householder_step_4(double *A ,double *alpha, double *c, int N, int i)
+{
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
     
     //关闭多余线程
@@ -439,7 +592,8 @@ __global__ void Householder_step_4(double *A ,double *alpha, double *b, double *
     }
 }
 
-__global__ void Householder_step_5(double *A ,double *b, double *c, int N){
+__global__ void Householder_step_5(double *A ,double *b, double *c, int N)
+{
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
     
     //关闭多余线程
@@ -516,7 +670,12 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
             sum += H_Sum[k];    //sum 为 q
         }
         //检查是否为0
-        if( (sum-eps)<0.0) continue;
+        if (sum + 1.0 == 1.0) 
+        {
+            continue;
+            printf("continue %d\n",i);
+        }
+
         double mol =sqrtl(sum);
         
         //将alpha[i-1]拷贝到cpu端
@@ -533,7 +692,10 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
         // 求出K
         //=========================================
         // hipLaunchKernelGGL(Householder_step_2,grid,block,0,0, Dev_Q, Dev_A, Dev_alpha, Dev_beta, Dev_b, sum, N, i);
-        Householder_step_2<<<grid,block>>>(Dev_Q, Dev_A, Dev_alpha, Dev_beta, Dev_b, sum, N, i);//调用核函数
+        // Householder_step_2_0<<<grid,block>>>(Dev_Q ,Dev_alpha, Dev_b, sum, N, i);//调用核函数
+        // Householder_step_2_1<<<grid,block>>>(Dev_Q ,Dev_alpha, Dev_b, sum, N, i);//调用核函数
+        Householder_step_2_3<<<grid,block>>>(Dev_Q ,Dev_alpha, Dev_b, sum, N, i);//调用核函数
+        Householder_step_2<<<grid,block>>>(Dev_A, Dev_alpha, Dev_beta, Dev_b, sum, N, i);//调用核函数
         cudaDeviceSynchronize();
         cudaMemcpy(H_Sum, Dev_beta, N * sizeof(double), cudaMemcpyDeviceToHost);
         sum = 0;
@@ -544,11 +706,10 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
         // 求A(i+1)矩阵
         //=========================================
         // hipLaunchKernelGGL(Householder_step_3,grid,block,0,0, Dev_A, Dev_alpha, Dev_b, Dev_c, sum, N, i);
-        Householder_step_3<<<grid,block>>>(Dev_A, Dev_alpha, Dev_b, Dev_c, sum, N, i);//调用核函数
-        Householder_step_4<<<grid,block>>>(Dev_A, Dev_alpha, Dev_b, Dev_c, sum, N, i);//调用核函数
+        Householder_step_3<<<grid,block>>>(Dev_alpha, Dev_b, Dev_c, sum, N, i);//调用核函数
+        Householder_step_4<<<grid,block>>>(Dev_A, Dev_alpha, Dev_c, N, i);//调用核函数
         cudaDeviceSynchronize();
 
-        break;
     }
 
     //=========================================
@@ -618,7 +779,7 @@ int main()
     time_t start, end;
 	printf("分配内存空间..\n");
 
-    int N = 2560;
+    int N = 10;
     double *A = new double[N * N];
     symmat(A, N);
     // show(A,N);
@@ -672,24 +833,24 @@ int main()
     else
         printf("Checking faled!\n");
 
-    printf("========================================================\n");
-    printf("Checking eigvector\n");
-    err=0;
-    for(int k=0;k<N*N;k++){
-        double diff=fabs(Dev_Q_0[k]-Dev_Q_1[k]);
-        if (diff<=1e-8){
-            continue;
-            //printf("No[%2d]: %17.8lf || %17.8lf || %12.7lf \n", k, Dev_W_0[k], Dev_W_1[k],diff);
-        }
-        else{
-            printf("No[%2d]: %17.8lf || %17.8lf || %12.7lf || E!\n", k, Dev_Q_0[k], Dev_Q_1[k],diff);
-            err++;
-        }
-    }
-    if(err==0)
-        printf("Checking pass!\n");
-    else
-        printf("Checking faled!\n");
+    // printf("========================================================\n");
+    // printf("Checking eigvector\n");
+    // err=0;
+    // for(int k=0;k<N*N;k++){
+    //     double diff=fabs(fabs(Dev_Q_0[k])-fabs(Dev_Q_1[k]));
+    //     if (diff<=1e-9){
+    //         continue;
+    //         //printf("No[%2d]: %17.8lf || %17.8lf || %12.7lf \n", k, Dev_W_0[k], Dev_W_1[k],diff);
+    //     }
+    //     else{
+    //         //printf("No[%2d]: %17.14lf || %17.14lf || %12.9lf || E!\n", k, Dev_Q_0[k], Dev_Q_1[k],diff);
+    //         err++;
+    //     }
+    // }
+    // if(err==0)
+    //     printf("Checking pass!\n");
+    // else
+    //     printf("Checking faled!\n");
     
     // show(Dev_Q_0,N);
     // printf("========================================================\n");
