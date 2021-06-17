@@ -1,0 +1,158 @@
+Flat profile:
+
+Each sample counts as 0.01 seconds.
+  %   cumulative   self              self     total           
+ time   seconds   seconds    calls   s/call   s/call  name    
+ 70.56    525.89   525.89        2   262.94   262.94  QR_vector(int, double*, double*, double*, double)
+ 17.38    655.38   129.49        2    64.75    64.75  sort_vector(double*, int, double*)
+ 12.05    745.16    89.77        1    89.77    89.77  Householder_vector(int, double*, double*, double*, double*)
+  0.01    745.25     0.09        1     0.09     0.09  symmat(double*, int)
+  0.00    745.28     0.03        1     0.03   327.72  mysolver_vector(int, double*, double*, double*)
+  0.00    745.30     0.02        1     0.02   417.48  mysolver_cpu_vector(int, double*, double*, double*)
+  0.00    745.30     0.00    10234     0.00     0.00  cudaError cudaLaunchKernel<char>(char const*, dim3, dim3, void**, unsigned long, CUstream_st*)
+  0.00    745.30     0.00     2558     0.00     0.00  Householder_step_1(double*, double*, double*, int, int)
+  0.00    745.30     0.00     2558     0.00     0.00  Householder_step_2(double*, double*, double*, double*, double*, double, int, int)
+  0.00    745.30     0.00     2558     0.00     0.00  Householder_step_3(double*, double*, double*, double*, double, int, int)
+  0.00    745.30     0.00     2558     0.00     0.00  Householder_step_4(double*, double*, double*, double*, double, int, int)
+  0.00    745.30     0.00     2558     0.00     0.00  __device_stub__Z18Householder_step_1PdS_S_ii(double*, double*, double*, int, int)
+  0.00    745.30     0.00     2558     0.00     0.00  __device_stub__Z18Householder_step_3PdS_S_S_dii(double*, double*, double*, double*, double, int, int)
+  0.00    745.30     0.00     2558     0.00     0.00  __device_stub__Z18Householder_step_4PdS_S_S_dii(double*, double*, double*, double*, double, int, int)
+  0.00    745.30     0.00     2558     0.00     0.00  __device_stub__Z18Householder_step_2PdS_S_S_S_dii(double*, double*, double*, double*, double*, double, int, int)
+  0.00    745.30     0.00        1     0.00     0.00  Householder_step_0(double*, int)
+  0.00    745.30     0.00        1     0.00     0.00  Householder_step_5(double*, double*, double*, int)
+  0.00    745.30     0.00        1     0.00     0.00  __device_stub__Z18Householder_step_0Pdi(double*, int)
+  0.00    745.30     0.00        1     0.00     0.00  __device_stub__Z18Householder_step_5PdS_S_i(double*, double*, double*, int)
+  0.00    745.30     0.00        1     0.00     0.00  ____nv_dummy_param_ref(void*)
+  0.00    745.30     0.00        1     0.00     0.00  __sti____cudaRegisterAll()
+  0.00    745.30     0.00        1     0.00     0.00  __nv_cudaEntityRegisterCallback(void**)
+  0.00    745.30     0.00        1     0.00     0.00  __nv_save_fatbinhandle_for_managed_rt(void**)
+  0.00    745.30     0.00        1     0.00     0.00  dim3::dim3(unsigned int, unsigned int, unsigned int)
+
+			Call graph
+
+
+granularity: each sample hit covers 2 byte(s) for 0.00% of 745.30 seconds
+
+index % time    self  children    called     name
+                                                 <spontaneous>
+[1]    100.0    0.00  745.30                 main [1]
+                0.02  417.46       1/1           mysolver_cpu_vector(int, double*, double*, double*) [3]
+                0.03  327.69       1/1           mysolver_vector(int, double*, double*, double*) [4]
+                0.09    0.00       1/1           symmat(double*, int) [7]
+-----------------------------------------------
+              262.94    0.00       1/2           mysolver_cpu_vector(int, double*, double*, double*) [3]
+              262.94    0.00       1/2           mysolver_vector(int, double*, double*, double*) [4]
+[2]     70.6  525.89    0.00       2         QR_vector(int, double*, double*, double*, double) [2]
+-----------------------------------------------
+                0.02  417.46       1/1           main [1]
+[3]     56.0    0.02  417.46       1         mysolver_cpu_vector(int, double*, double*, double*) [3]
+              262.94    0.00       1/2           QR_vector(int, double*, double*, double*, double) [2]
+               89.77    0.00       1/1           Householder_vector(int, double*, double*, double*, double*) [6]
+               64.75    0.00       1/2           sort_vector(double*, int, double*) [5]
+-----------------------------------------------
+                0.03  327.69       1/1           main [1]
+[4]     44.0    0.03  327.69       1         mysolver_vector(int, double*, double*, double*) [4]
+              262.94    0.00       1/2           QR_vector(int, double*, double*, double*, double) [2]
+               64.75    0.00       1/2           sort_vector(double*, int, double*) [5]
+                0.00    0.00    2558/2558        Householder_step_1(double*, double*, double*, int, int) [309]
+                0.00    0.00    2558/2558        Householder_step_2(double*, double*, double*, double*, double*, double, int, int) [310]
+                0.00    0.00    2558/2558        Householder_step_3(double*, double*, double*, double*, double, int, int) [311]
+                0.00    0.00    2558/2558        Householder_step_4(double*, double*, double*, double*, double, int, int) [312]
+                0.00    0.00       1/1           dim3::dim3(unsigned int, unsigned int, unsigned int) [325]
+                0.00    0.00       1/1           Householder_step_0(double*, int) [317]
+                0.00    0.00       1/1           Householder_step_5(double*, double*, double*, int) [318]
+-----------------------------------------------
+               64.75    0.00       1/2           mysolver_cpu_vector(int, double*, double*, double*) [3]
+               64.75    0.00       1/2           mysolver_vector(int, double*, double*, double*) [4]
+[5]     17.4  129.49    0.00       2         sort_vector(double*, int, double*) [5]
+-----------------------------------------------
+               89.77    0.00       1/1           mysolver_cpu_vector(int, double*, double*, double*) [3]
+[6]     12.0   89.77    0.00       1         Householder_vector(int, double*, double*, double*, double*) [6]
+-----------------------------------------------
+                0.09    0.00       1/1           main [1]
+[7]      0.0    0.09    0.00       1         symmat(double*, int) [7]
+-----------------------------------------------
+                0.00    0.00       1/10234       __device_stub__Z18Householder_step_0Pdi(double*, int) [319]
+                0.00    0.00       1/10234       __device_stub__Z18Householder_step_5PdS_S_i(double*, double*, double*, int) [320]
+                0.00    0.00    2558/10234       __device_stub__Z18Householder_step_1PdS_S_ii(double*, double*, double*, int, int) [313]
+                0.00    0.00    2558/10234       __device_stub__Z18Householder_step_2PdS_S_S_S_dii(double*, double*, double*, double*, double*, double, int, int) [316]
+                0.00    0.00    2558/10234       __device_stub__Z18Householder_step_3PdS_S_S_dii(double*, double*, double*, double*, double, int, int) [314]
+                0.00    0.00    2558/10234       __device_stub__Z18Householder_step_4PdS_S_S_dii(double*, double*, double*, double*, double, int, int) [315]
+[308]    0.0    0.00    0.00   10234         cudaError cudaLaunchKernel<char>(char const*, dim3, dim3, void**, unsigned long, CUstream_st*) [308]
+-----------------------------------------------
+                0.00    0.00    2558/2558        mysolver_vector(int, double*, double*, double*) [4]
+[309]    0.0    0.00    0.00    2558         Householder_step_1(double*, double*, double*, int, int) [309]
+                0.00    0.00    2558/2558        __device_stub__Z18Householder_step_1PdS_S_ii(double*, double*, double*, int, int) [313]
+-----------------------------------------------
+                0.00    0.00    2558/2558        mysolver_vector(int, double*, double*, double*) [4]
+[310]    0.0    0.00    0.00    2558         Householder_step_2(double*, double*, double*, double*, double*, double, int, int) [310]
+                0.00    0.00    2558/2558        __device_stub__Z18Householder_step_2PdS_S_S_S_dii(double*, double*, double*, double*, double*, double, int, int) [316]
+-----------------------------------------------
+                0.00    0.00    2558/2558        mysolver_vector(int, double*, double*, double*) [4]
+[311]    0.0    0.00    0.00    2558         Householder_step_3(double*, double*, double*, double*, double, int, int) [311]
+                0.00    0.00    2558/2558        __device_stub__Z18Householder_step_3PdS_S_S_dii(double*, double*, double*, double*, double, int, int) [314]
+-----------------------------------------------
+                0.00    0.00    2558/2558        mysolver_vector(int, double*, double*, double*) [4]
+[312]    0.0    0.00    0.00    2558         Householder_step_4(double*, double*, double*, double*, double, int, int) [312]
+                0.00    0.00    2558/2558        __device_stub__Z18Householder_step_4PdS_S_S_dii(double*, double*, double*, double*, double, int, int) [315]
+-----------------------------------------------
+                0.00    0.00    2558/2558        Householder_step_1(double*, double*, double*, int, int) [309]
+[313]    0.0    0.00    0.00    2558         __device_stub__Z18Householder_step_1PdS_S_ii(double*, double*, double*, int, int) [313]
+                0.00    0.00    2558/10234       cudaError cudaLaunchKernel<char>(char const*, dim3, dim3, void**, unsigned long, CUstream_st*) [308]
+-----------------------------------------------
+                0.00    0.00    2558/2558        Householder_step_3(double*, double*, double*, double*, double, int, int) [311]
+[314]    0.0    0.00    0.00    2558         __device_stub__Z18Householder_step_3PdS_S_S_dii(double*, double*, double*, double*, double, int, int) [314]
+                0.00    0.00    2558/10234       cudaError cudaLaunchKernel<char>(char const*, dim3, dim3, void**, unsigned long, CUstream_st*) [308]
+-----------------------------------------------
+                0.00    0.00    2558/2558        Householder_step_4(double*, double*, double*, double*, double, int, int) [312]
+[315]    0.0    0.00    0.00    2558         __device_stub__Z18Householder_step_4PdS_S_S_dii(double*, double*, double*, double*, double, int, int) [315]
+                0.00    0.00    2558/10234       cudaError cudaLaunchKernel<char>(char const*, dim3, dim3, void**, unsigned long, CUstream_st*) [308]
+-----------------------------------------------
+                0.00    0.00    2558/2558        Householder_step_2(double*, double*, double*, double*, double*, double, int, int) [310]
+[316]    0.0    0.00    0.00    2558         __device_stub__Z18Householder_step_2PdS_S_S_S_dii(double*, double*, double*, double*, double*, double, int, int) [316]
+                0.00    0.00    2558/10234       cudaError cudaLaunchKernel<char>(char const*, dim3, dim3, void**, unsigned long, CUstream_st*) [308]
+-----------------------------------------------
+                0.00    0.00       1/1           mysolver_vector(int, double*, double*, double*) [4]
+[317]    0.0    0.00    0.00       1         Householder_step_0(double*, int) [317]
+                0.00    0.00       1/1           __device_stub__Z18Householder_step_0Pdi(double*, int) [319]
+-----------------------------------------------
+                0.00    0.00       1/1           mysolver_vector(int, double*, double*, double*) [4]
+[318]    0.0    0.00    0.00       1         Householder_step_5(double*, double*, double*, int) [318]
+                0.00    0.00       1/1           __device_stub__Z18Householder_step_5PdS_S_i(double*, double*, double*, int) [320]
+-----------------------------------------------
+                0.00    0.00       1/1           Householder_step_0(double*, int) [317]
+[319]    0.0    0.00    0.00       1         __device_stub__Z18Householder_step_0Pdi(double*, int) [319]
+                0.00    0.00       1/10234       cudaError cudaLaunchKernel<char>(char const*, dim3, dim3, void**, unsigned long, CUstream_st*) [308]
+-----------------------------------------------
+                0.00    0.00       1/1           Householder_step_5(double*, double*, double*, int) [318]
+[320]    0.0    0.00    0.00       1         __device_stub__Z18Householder_step_5PdS_S_i(double*, double*, double*, int) [320]
+                0.00    0.00       1/10234       cudaError cudaLaunchKernel<char>(char const*, dim3, dim3, void**, unsigned long, CUstream_st*) [308]
+-----------------------------------------------
+                0.00    0.00       1/1           __cudaUnregisterBinaryUtil() [328]
+[321]    0.0    0.00    0.00       1         ____nv_dummy_param_ref(void*) [321]
+-----------------------------------------------
+                0.00    0.00       1/1           __libc_csu_init [1350]
+[322]    0.0    0.00    0.00       1         __sti____cudaRegisterAll() [322]
+                0.00    0.00       1/1           __nv_cudaEntityRegisterCallback(void**) [323]
+-----------------------------------------------
+                0.00    0.00       1/1           __sti____cudaRegisterAll() [322]
+[323]    0.0    0.00    0.00       1         __nv_cudaEntityRegisterCallback(void**) [323]
+                0.00    0.00       1/1           __nv_save_fatbinhandle_for_managed_rt(void**) [324]
+-----------------------------------------------
+                0.00    0.00       1/1           __nv_cudaEntityRegisterCallback(void**) [323]
+[324]    0.0    0.00    0.00       1         __nv_save_fatbinhandle_for_managed_rt(void**) [324]
+-----------------------------------------------
+                0.00    0.00       1/1           mysolver_vector(int, double*, double*, double*) [4]
+[325]    0.0    0.00    0.00       1         dim3::dim3(unsigned int, unsigned int, unsigned int) [325]
+-----------------------------------------------
+
+Index by function name
+
+   [5] sort_vector(double*, int, double*) [318] Householder_step_5(double*, double*, double*, int) [316] __device_stub__Z18Householder_step_2PdS_S_S_S_dii(double*, double*, double*, double*, double*, double, int, int)
+   [4] mysolver_vector(int, double*, double*, double*) [6] Householder_vector(int, double*, double*, double*, double*) [7] symmat(double*, int)
+ [308] cudaError cudaLaunchKernel<char>(char const*, dim3, dim3, void**, unsigned long, CUstream_st*) [3] mysolver_cpu_vector(int, double*, double*, double*) [2] QR_vector(int, double*, double*, double*, double)
+ [317] Householder_step_0(double*, int) [319] __device_stub__Z18Householder_step_0Pdi(double*, int) [321] ____nv_dummy_param_ref(void*)
+ [309] Householder_step_1(double*, double*, double*, int, int) [320] __device_stub__Z18Householder_step_5PdS_S_i(double*, double*, double*, int) [322] __sti____cudaRegisterAll()
+ [310] Householder_step_2(double*, double*, double*, double*, double*, double, int, int) [313] __device_stub__Z18Householder_step_1PdS_S_ii(double*, double*, double*, int, int) [323] __nv_cudaEntityRegisterCallback(void**)
+ [311] Householder_step_3(double*, double*, double*, double*, double, int, int) [314] __device_stub__Z18Householder_step_3PdS_S_S_dii(double*, double*, double*, double*, double, int, int) [324] __nv_save_fatbinhandle_for_managed_rt(void**)
+ [312] Householder_step_4(double*, double*, double*, double*, double, int, int) [315] __device_stub__Z18Householder_step_4PdS_S_S_dii(double*, double*, double*, double*, double, int, int) [325] dim3::dim3(unsigned int, unsigned int, unsigned int)
