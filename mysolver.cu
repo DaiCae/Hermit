@@ -3,7 +3,6 @@
 #include <math.h>
 #include <sys/time.h>
 
-
 void show(double *A, int N)
 {
     for (int i = 0; i < N; i++)
@@ -129,6 +128,12 @@ int Householder_vector(int n, double A[], double b[], double c[], double *Q)
                 value += Q[j * n + k] * alpha[k] / q;
             b[j] = value;
         }
+
+        // printf("\n");
+        // for(int l=0;l<n;l++)
+        //     printf("%12.8lf,", b[l]);
+        // printf("\n\n");
+
         for (int j = 0; j <= n-1; j++)
         {
             for (int k = 0; k < i; k++)
@@ -166,7 +171,7 @@ int Householder_vector(int n, double A[], double b[], double c[], double *Q)
             }
         }
 
-
+        break;
     }
     
     // 抽出主、次对角线元素
@@ -298,15 +303,22 @@ int mysolver_cpu_vector(int N, double *Dev_A, double *Dev_W, double *Q)
     cudaMemcpy(a, Dev_A, N * N * sizeof(double), cudaMemcpyDeviceToHost);
     // printf("\n");
     // show(a,N);
-    
+
+    time_t start, end;
+    start = clock(); 
     Householder_vector(N, a, b, c, Qalpha);
+    end = clock();
+    printf("HS CPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
 
-    for (int i = 0; i < N * N; i++)
-    {    
-        Q[i] = Qalpha[i];
-    }
+    // for (int i = 0; i < N * N; i++)
+    // {    
+    //     Q[i] = Qalpha[i];
+    // }
 
+    start = clock();
     QR_vector(N, b, c, Qalpha, eps);
+    end = clock();
+    printf("QR CPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
 
     sort_vector(b, N, Qalpha);
 
@@ -321,10 +333,10 @@ int mysolver_cpu_vector(int N, double *Dev_A, double *Dev_W, double *Q)
     //     }
     // }
 
-    // for (int i = 0; i < N * N; i++)
-    // {    
-    //     Q[i] = Qalpha[i];
-    // }
+    for (int i = 0; i < N * N; i++)
+    {    
+        Q[i] = Qalpha[i];
+    }
 
     return 1;
 }
@@ -371,14 +383,21 @@ __global__ void Householder_step_2(double *Q ,double *A, double *alpha, double *
     //======================================
     // 求Q(i+1)矩阵（矩阵减矩阵）
     double value =0.0;
-    // for (int k = 0; k < i; k++)
-    //     value += Q[idx * N + k] * alpha[k] /q;
-    // b[idx]=value;
-    // __syncthreads();
+    for (int k = 0; k < i; k++)
+        value += Q[idx * N + k] * alpha[k] /q;
+    b[idx]=value;
+    __syncthreads();
 
-    // for (int k = 0; k < i; k++)
-    //     Q[idx * N + k] = Q[idx * N + k] - b[idx] * alpha[k];
-    // __syncthreads();
+    // if(idx==0){
+    //     printf("\n");
+    //     for(int l=0;l<N;l++)
+    //         printf("%12.8lf,", b[l]);
+    //     printf("\n\n");
+    // }
+
+    for (int k = 0; k < i; k++)
+        Q[idx * N + k] = Q[idx * N + k] - b[idx] * alpha[k];
+    __syncthreads();
 
     //idx < i+1
     if(idx >= i + 1) return;
@@ -439,6 +458,9 @@ __global__ void Householder_step_5(double *A ,double *b, double *c, int N){
 
 int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
 {
+
+    time_t start, end;
+    start = clock();
     //主次对角线 b c 向量指针
     double *Dev_b;
     double *Dev_c;
@@ -525,6 +547,8 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
         Householder_step_3<<<grid,block>>>(Dev_A, Dev_alpha, Dev_b, Dev_c, sum, N, i);//调用核函数
         Householder_step_4<<<grid,block>>>(Dev_A, Dev_alpha, Dev_b, Dev_c, sum, N, i);//调用核函数
         cudaDeviceSynchronize();
+
+        break;
     }
 
     //=========================================
@@ -543,13 +567,21 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
     cudaMemcpy(H_Sum, Dev_b, N * sizeof(double), cudaMemcpyDeviceToHost);
     cudaMemcpy(H_c, Dev_c, N * sizeof(double), cudaMemcpyDeviceToHost);
     cudaMemcpy(H_Q, Dev_Q, N * N * sizeof(double), cudaMemcpyDeviceToHost);
+    
+    end = clock();
+    printf("HS GPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
 
-    for (int i = 0; i < N * N; i++)
-    {    
-        Q[i] = H_Q[i];
-    }
+    // for (int i = 0; i < N * N; i++)
+    // {    
+    //     Q[i] = H_Q[i];
+    // }
 
+    start = clock();
     QR_vector(N, H_Sum, H_c, H_Q, eps);
+    end = clock();
+    printf("QR CPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
+
+
     sort_vector(H_Sum, N, H_Q);
 
     //抽出一半特征值
@@ -564,10 +596,11 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
     //         Q[j * N + i] = H_Q[j * N + i * 2];
     //     }
     // }
-    // for (int i = 0; i < N * N; i++)
-    // {    
-    //     Q[i] = H_Q[i];
-    // }
+
+    for (int i = 0; i < N * N; i++)
+    {    
+        Q[i] = H_Q[i];
+    }
 
 
 
@@ -582,9 +615,10 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
 
 int main()
 {
+    time_t start, end;
 	printf("分配内存空间..\n");
 
-    int N = 10;
+    int N = 2560;
     double *A = new double[N * N];
     symmat(A, N);
     // show(A,N);
@@ -594,8 +628,6 @@ int main()
 
     double *Dev_Q_0 = new double[N * N];
     double *Dev_Q_1 = new double[N * N];
-
-    time_t start, end;
 
     //设备端内存分配
     double *Dev_A = new double[N * N];
@@ -612,14 +644,14 @@ int main()
     start = clock();
     mysolver_cpu_vector(N, Dev_A, Dev_W_0, Dev_Q_0);
     end = clock();
-    printf("CPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
+    printf("Total CPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
 
     printf("========================================================\n");
     printf("GPU is calculating\n");
     start = clock();
     mysolver_vector(N, Dev_A, Dev_W_1, Dev_Q_1);
     end = clock();
-    printf("GPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
+    printf("Total GPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
 
     printf("========================================================\n");
     printf("Checking eigvalue\n"); 
@@ -641,23 +673,23 @@ int main()
         printf("Checking faled!\n");
 
     printf("========================================================\n");
-    // printf("Checking eigvector\n");
-    // err=0;
-    // for(int k=0;k<N*N;k++){
-    //     double diff=fabs(Dev_Q_0[k]-Dev_Q_1[k]);
-    //     if (diff<=1e-8){
-    //         continue;
-    //         //printf("No[%2d]: %17.8lf || %17.8lf || %12.7lf \n", k, Dev_W_0[k], Dev_W_1[k],diff);
-    //     }
-    //     else{
-    //         //printf("No[%2d]: %17.8lf || %17.8lf || %12.7lf || E!\n", k, Dev_Q_0[k], Dev_Q_1[k],diff);
-    //         err++;
-    //     }
-    // }
-    // if(err==0)
-    //     printf("Checking pass!\n");
-    // else
-    //     printf("Checking faled!\n");
+    printf("Checking eigvector\n");
+    err=0;
+    for(int k=0;k<N*N;k++){
+        double diff=fabs(Dev_Q_0[k]-Dev_Q_1[k]);
+        if (diff<=1e-8){
+            continue;
+            //printf("No[%2d]: %17.8lf || %17.8lf || %12.7lf \n", k, Dev_W_0[k], Dev_W_1[k],diff);
+        }
+        else{
+            printf("No[%2d]: %17.8lf || %17.8lf || %12.7lf || E!\n", k, Dev_Q_0[k], Dev_Q_1[k],diff);
+            err++;
+        }
+    }
+    if(err==0)
+        printf("Checking pass!\n");
+    else
+        printf("Checking faled!\n");
     
     // show(Dev_Q_0,N);
     // printf("========================================================\n");
