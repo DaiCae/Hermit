@@ -486,6 +486,7 @@ __global__ void Householder_step_2_0(double *Q ,double *alpha, double *b, double
     // }
 
 }
+
 __global__ void Householder_step_2_1(double *Q ,double *alpha, double *b, double q, int N, int i)
 {
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
@@ -493,6 +494,7 @@ __global__ void Householder_step_2_1(double *Q ,double *alpha, double *b, double
         Q[idx * N + k] = Q[idx * N + k] - b[idx] * alpha[k];
     __syncthreads();
 }
+
 __global__ void Householder_step_2_2(double *Q ,double *alpha, double *b, double q, int N, int i)
 {
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
@@ -520,6 +522,7 @@ __global__ void Householder_step_2_2(double *Q ,double *alpha, double *b, double
         }
     }
 }
+
 __global__ void Householder_step_2_3(double *Q ,double *alpha, double *b, double q, int N, int i)
 {
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
@@ -652,7 +655,13 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
     //在CPU上申请求和用的缓存数组
     double *H_Sum = new double[N];
     double sum,eps=1e-12;
-
+    
+    time_t start0, end0;
+    double t0=0.0;
+    double t1=0.0;
+    double t2=0.0;
+    double t3=0.0;
+    double t4=0.0;
     //Householder 循环分步调用核函数
     // hipLaunchKernelGGL(Householder_step_0,grid,block,0,0, Dev_Q, N);
     Householder_step_0<<<grid,block>>>(Dev_Q, N);//调用核函数
@@ -662,8 +671,13 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
         //  初始化alpha向量 合并规约求alpha 的 mol
         //=========================================
         // hipLaunchKernelGGL(Householder_step_1,grid,block,0,0, Dev_A, Dev_alpha, Dev_beta, N, i);
+        start0=clock();
         Householder_step_1<<<grid,block>>>(Dev_A, Dev_alpha, Dev_beta, N, i);//调用核函数
         cudaDeviceSynchronize();
+        end0 =clock();
+        t0 += (double)(end0 - start0) / CLOCKS_PER_SEC * 1000;
+
+        start0=clock();
         cudaMemcpy(H_Sum, Dev_beta, N * sizeof(double), cudaMemcpyDeviceToHost);
         sum = 0;
         for (int k = 0; k < N; k++){
@@ -686,7 +700,11 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
         H_Sum[0] = H_Sum[0] - mol;
         //写回alpha[i-1]
         cudaMemcpy(Dev_alpha + i - 1, H_Sum, 1 * sizeof(double), cudaMemcpyHostToDevice);
-        
+        end0 =clock();
+        t1 +=(double)(end0 - start0) / CLOCKS_PER_SEC * 1000;
+
+
+
         //=========================================
         // 求Q(i+1)矩阵（矩阵减矩阵）
         // 求出K
@@ -694,24 +712,34 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
         // hipLaunchKernelGGL(Householder_step_2,grid,block,0,0, Dev_Q, Dev_A, Dev_alpha, Dev_beta, Dev_b, sum, N, i);
         // Householder_step_2_0<<<grid,block>>>(Dev_Q ,Dev_alpha, Dev_b, sum, N, i);//调用核函数
         // Householder_step_2_1<<<grid,block>>>(Dev_Q ,Dev_alpha, Dev_b, sum, N, i);//调用核函数
+        start0=clock();
         Householder_step_2_3<<<grid,block>>>(Dev_Q ,Dev_alpha, Dev_b, sum, N, i);//调用核函数
+        end0 =clock();
+        t2 +=(double)(end0 - start0) / CLOCKS_PER_SEC * 1000;
+
+        start0=clock();
         Householder_step_2<<<grid,block>>>(Dev_A, Dev_alpha, Dev_beta, Dev_b, sum, N, i);//调用核函数
         cudaDeviceSynchronize();
         cudaMemcpy(H_Sum, Dev_beta, N * sizeof(double), cudaMemcpyDeviceToHost);
         sum = 0;
         for (int k = 0; k < N; k++)
             sum += H_Sum[k];    //sum 为 K
+        end0 =clock();
+        t3 +=(double)(end0 - start0) / CLOCKS_PER_SEC * 1000;
+
 
         //=========================================
         // 求A(i+1)矩阵
         //=========================================
         // hipLaunchKernelGGL(Householder_step_3,grid,block,0,0, Dev_A, Dev_alpha, Dev_b, Dev_c, sum, N, i);
+        start0=clock();
         Householder_step_3<<<grid,block>>>(Dev_alpha, Dev_b, Dev_c, sum, N, i);//调用核函数
         Householder_step_4<<<grid,block>>>(Dev_A, Dev_alpha, Dev_c, N, i);//调用核函数
         cudaDeviceSynchronize();
-
+        end0 =clock();
+        t4 +=(double)(end0 - start0) / CLOCKS_PER_SEC * 1000;
     }
-
+    printf("t0 = %lf,\nt1 = %lf,\nt2 = %lf,\nt3 = %lf,\nt4 = %lf\n\n", t0,t1,t2,t3,t4);
     //=========================================
     // 抽出主、次对角线元素
     //=========================================
@@ -727,7 +755,7 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
 
     cudaMemcpy(H_Sum, Dev_b, N * sizeof(double), cudaMemcpyDeviceToHost);
     cudaMemcpy(H_c, Dev_c, N * sizeof(double), cudaMemcpyDeviceToHost);
-    cudaMemcpy(H_Q, Dev_Q, N * N * sizeof(double), cudaMemcpyDeviceToHost);
+    // cudaMemcpy(H_Q, Dev_Q, N * N * sizeof(double), cudaMemcpyDeviceToHost);
     
     end = clock();
     printf("HS GPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
@@ -737,12 +765,17 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
     //     Q[i] = H_Q[i];
     // }
 
+    // start = clock();
+    // QR_vector(N, H_Sum, H_c, H_Q, eps);
+    // end = clock();
+    // printf("QR CPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
+
     start = clock();
-    QR_vector(N, H_Sum, H_c, H_Q, eps);
+    QR_vector_gpu(N, H_Sum, H_c, Dev_Q, eps);
     end = clock();
     printf("QR CPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
 
-
+    cudaMemcpy(H_Q, Dev_Q, N * N * sizeof(double), cudaMemcpyDeviceToHost);
     sort_vector(H_Sum, N, H_Q);
 
     //抽出一半特征值
@@ -758,10 +791,10 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
     //     }
     // }
 
-    for (int i = 0; i < N * N; i++)
-    {    
-        Q[i] = H_Q[i];
-    }
+    // for (int i = 0; i < N * N; i++)
+    // {    
+    //     Q[i] = H_Q[i];
+    // }
 
 
 
@@ -779,7 +812,7 @@ int main()
     time_t start, end;
 	printf("分配内存空间..\n");
 
-    int N = 10;
+    int N = 2560;
     double *A = new double[N * N];
     symmat(A, N);
     // show(A,N);
@@ -800,12 +833,12 @@ int main()
 	//数据拷贝，主机到设备
 	cudaMemcpy(Dev_A, A, N * N * sizeof(double),cudaMemcpyHostToDevice);
     
-    printf("========================================================\n");
-    printf("CPU is calculating\n");
-    start = clock();
-    mysolver_cpu_vector(N, Dev_A, Dev_W_0, Dev_Q_0);
-    end = clock();
-    printf("Total CPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
+    // printf("========================================================\n");
+    // printf("CPU is calculating\n");
+    // start = clock();
+    // mysolver_cpu_vector(N, Dev_A, Dev_W_0, Dev_Q_0);
+    // end = clock();
+    // printf("Total CPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
 
     printf("========================================================\n");
     printf("GPU is calculating\n");
@@ -824,7 +857,7 @@ int main()
             //printf("No[%2d]: %17.8lf || %17.8lf || %12.7lf \n", k, Dev_W_0[k], Dev_W_1[k],diff);
         }
         else{
-            printf("No[%2d]: %17.8lf || %17.8lf || %12.7lf || E!\n", k, Dev_W_0[k], Dev_W_1[k],diff);
+            //printf("No[%2d]: %17.8lf || %17.8lf || %12.7lf || E!\n", k, Dev_W_0[k], Dev_W_1[k],diff);
             err++;
         }
     }
