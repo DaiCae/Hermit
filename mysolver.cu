@@ -62,28 +62,57 @@ void symmat(double H[], int N)
 }
 
 // 对特征值和特征向量排序
-void sort_vector(double A[], int N, double *q)
+void sort_vector(double b[], int N, double *q)
 {
-    double temp = 0.0;
-    for (int i = 0; i < N; i++)
+    // double temp = 0.0;
+    // for (int i = 0; i < N; i++)
+    // {
+    //     for (int j = 0; j < N - i - 1; j++)
+    //     {
+    //         if (b[j] > b[j + 1])
+    //         {
+    //             temp = b[j];
+    //             b[j] = b[j + 1];
+    //             b[j + 1] = temp;
+    //             for (int k = 0; k < N; k++)
+    //             {
+    //                 temp = q[k * N + j];
+    //                 q[k * N + j] = q[k * N + j + 1];
+    //                 q[k * N + j + 1] = temp;
+    //             }
+    //         }
+    //     }
+    // }
+    for (int i = 0; i <= N - 1; i++)
     {
-        for (int j = 0; j < N - i - 1; j++)
+        int k = i;
+        double p = b[i];
+        if (i + 1 <= N - 1)
         {
-            if (A[j] > A[j + 1])
+            int j = i + 1;
+            while ((j <= N - 1) && (b[j] <= p))
             {
-                temp = A[j];
-                A[j] = A[j + 1];
-                A[j + 1] = temp;
-                for (int k = 0; k < N; k++)
-                {
-                    temp = q[k * N + j];
-                    q[k * N + j] = q[k * N + j + 1];
-                    q[k * N + j + 1] = temp;
-                }
+                k = j;
+                p = b[j];
+                j++;
+            }
+        }
+        if (k != i)
+        {
+            b[k] = b[i];
+            b[i] = p;
+            for (int j = 0; j <= N - 1; j++)
+            {
+                int u = j * N + i;
+                int v = j * N + k;
+                p = q[j * N + i];
+                q[j * N + i] = q[j * N + k];
+                q[j * N + k] = p;
             }
         }
     }
 }
+
 
 // Householder（带特征向量）
 int Householder_vector(int n, double A[], double b[], double c[], double *Q)
@@ -298,11 +327,28 @@ __global__ void QR_gpu_part(double *Q , double s, double e, int N, int i)
     // if (idy >= N) return;
     
 
-    int u = idx * N + i + 1;
-    int v = u - 1;
-    double h = Q[u];
-    Q[u] = s * Q[v] + e * h;
-    Q[v] = e * Q[v] - s * h;
+    // int u = idx * N + i + 1;
+    // int v = u - 1;
+    // double h = Q[u];
+    // Q[u] = s * Q[v] + e * h;
+    // Q[v] = e * Q[v] - s * h;
+
+    // double elem1 = Q[idx * N + i + 1];
+    // double elem2 = Q[idx * N + i];
+    // Q[idx * N + i + 1] = s * elem2 + e * elem1;
+    // Q[idx * N + i] = e * elem2 - s * elem1;
+
+    //Q的转置求法
+    // int u = (i+1) * N + idx;
+    // int v = u - N;
+    // double h = Q[u];
+    // Q[u] = s * Q[v] + e * h;
+    // Q[v] = e * Q[v] - s * h;
+
+    double elem1 = Q[(i+1) * N + idx];
+    double elem2 = Q[i * N + idx];
+    Q[(i+1) * N + idx] = s * elem2 + e * elem1;
+    Q[i * N + idx] = e * elem2 - s * elem1;
 
 }
 
@@ -314,6 +360,13 @@ int QR_vector_gpu(int N, double *b, double *c, double *Dev_Q, double eps){
     
     double h, p, r;
     double f = 0.0;
+
+    time_t start0, end0;
+    double t0=0.0;
+    //定义N维向量的grid
+    dim3 block(1024);
+    dim3 grid((N-1)/block.x + 1,1);
+
     for (int k = 0; k <= N - 1; k++){
         do{
             double g = b[k];
@@ -334,6 +387,7 @@ int QR_vector_gpu(int N, double *b, double *c, double *Dev_Q, double eps){
 
             double e = 1.0;
             double s = 0.0;
+
             for (int i = N - 2; i >= k; i--)
             {
                 g = e * c[i];
@@ -356,13 +410,13 @@ int QR_vector_gpu(int N, double *b, double *c, double *Dev_Q, double eps){
                 }
                 p = e * b[i] - s * g;
                 b[i + 1] = h + s * (e * g + s * b[i]);
-                    //=======================
-                    //定义N维向量的grid
-                    dim3 block(1024);
-                    dim3 grid((N-1)/block.x + 1,1);
-                    QR_gpu_part<<<grid,block>>>(Dev_Q, s, e, N, i);//调用核函数
-                    cudaDeviceSynchronize();
-                    //=======================
+                //=======================
+                start0=clock();
+                QR_gpu_part<<<grid,block>>>(Dev_Q, s, e, N, i);//调用核函数
+                cudaDeviceSynchronize();
+                end0=clock();
+                t0 +=(double)(end0 - start0) / CLOCKS_PER_SEC * 1000;
+                //=======================
             }
             c[k] = s * p;
             b[k] = e * p;
@@ -370,9 +424,10 @@ int QR_vector_gpu(int N, double *b, double *c, double *Dev_Q, double eps){
         
         b[k] = b[k] + f;
     }
+    printf("Gpu part time = %lf\n", t0);
+
     return (1);
 }
-
 //求解特征值和特征向量
 // int mysolver_cpu_vector(int N, double *Dev_A, double *Dev_W, double *d_A)
 int mysolver_cpu_vector(int N, double *Dev_A, double *Dev_W, double *Q)
@@ -530,24 +585,27 @@ __global__ void Householder_step_2_3(double *Q ,double *alpha, double *b, double
     
     // 求Q(i+1)矩阵（矩阵减矩阵）
 
-    double value = 0.0;
-    for (int k = 0; k < i; k++)
-        value += Q[idx * N + k] * alpha[k] / q;
-    b[idx] = value;
+    // double value = 0.0;
+    // for (int k = 0; k < i; k++)
+    //     value += Q[idx * N + k] * alpha[k] / q;
+    // b[idx] = value;
         
 
-        // printf("\n");
-        // for(int l=0;l<n;l++)
-        //     printf("%12.8lf,", b[l]);
-        // printf("\n\n");
+    // for (int k = 0; k < i; k++)
+    // {
+    //     Q[idx * N + k] = Q[idx * N + k] - b[idx] * alpha[k];
+    // }
 
+    //Q矩阵转置的求法
+    double value = 0.0;
+    for (int k = 0; k < i; k++)
+        value += Q[k * N + idx] * alpha[k] / q;
+    b[idx] = value;
 
     for (int k = 0; k < i; k++)
     {
-        Q[idx * N + k] = Q[idx * N + k] - b[idx] * alpha[k];
+        Q[k * N + idx] = Q[k * N + idx] - b[idx] * alpha[k];
     }
-
-    
 }
 
 __global__ void Householder_step_2(double *A, double *alpha, double *beta, double *b, double q, int N, int i)
@@ -558,10 +616,17 @@ __global__ void Householder_step_2(double *A, double *alpha, double *beta, doubl
 
     //======================================
     // 求A(i+1)矩阵
+    // double value = 0.0;
+    // for (int k = 0; k < i + 1; k++)
+    //     value += A[idx * N + k] * alpha[k] / q;
+    // b[idx] = value;
+
+    //转置
     double value = 0.0;
     for (int k = 0; k < i + 1; k++)
-        value += A[idx * N + k] * alpha[k] / q;
+        value += A[k * N + idx] * alpha[k] / q;
     b[idx] = value;
+
 
     // 求K
     beta[idx] = alpha[idx] * b[idx] / (2 * q);
@@ -591,7 +656,9 @@ __global__ void Householder_step_4(double *A ,double *alpha, double *c, int N, i
 
     for (int k = 0; k < i + 1; k++)
     {
-        A[idx * N + k] = A[idx * N + k] - alpha[idx] * c[k] - c[idx] * alpha[k];
+        // A[idx * N + k] = A[idx * N + k] - alpha[idx] * c[k] - c[idx] * alpha[k];
+        //转置
+        A[k * N + idx] = A[k * N + idx] - alpha[idx] * c[k] - c[idx] * alpha[k];
     }
 }
 
@@ -612,6 +679,21 @@ __global__ void Householder_step_5(double *A ,double *b, double *c, int N)
         c[N-1]=0.0;
     }
 }
+
+__global__ void Matrix_transpose(double *Q ,int N)
+{
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    int idy = threadIdx.y + blockIdx.y * blockDim.y;
+
+    //关闭多余线程
+    if (idx >= N) return;
+    if (idy >= N) return;
+
+    double temp =Q[idx * N + idy];
+    __syncthreads();
+    Q[idy * N + idx] = temp;
+}
+
 
 int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
 {
@@ -645,12 +727,12 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
     
     printf("block size: %d | grid size: %d\n",block.x,grid.x);
     
-    // //计算需要的最小块数的长度取整
-    // int length = (N-1)/32 + 1;
+    //计算需要的最小块数的长度取整
+    int length = (N-1)/32 + 1;
 
-    // //定义N维矩阵的grid
-    // dim3 Block(32,32);
-    // dim3 Grid(length, length);
+    //定义N维矩阵的grid
+    dim3 Block(32,32);
+    dim3 Grid(length, length);
 
     //在CPU上申请求和用的缓存数组
     double *H_Sum = new double[N];
@@ -714,6 +796,7 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
         // Householder_step_2_1<<<grid,block>>>(Dev_Q ,Dev_alpha, Dev_b, sum, N, i);//调用核函数
         start0=clock();
         Householder_step_2_3<<<grid,block>>>(Dev_Q ,Dev_alpha, Dev_b, sum, N, i);//调用核函数
+        cudaDeviceSynchronize();
         end0 =clock();
         t2 +=(double)(end0 - start0) / CLOCKS_PER_SEC * 1000;
 
@@ -772,10 +855,22 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, double *Q)
 
     start = clock();
     QR_vector_gpu(N, H_Sum, H_c, Dev_Q, eps);
+    cudaDeviceSynchronize();
     end = clock();
-    printf("QR CPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
+    printf("QR GPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
 
     cudaMemcpy(H_Q, Dev_Q, N * N * sizeof(double), cudaMemcpyDeviceToHost);
+    // show(H_Q,N);
+
+    start = clock();
+    Matrix_transpose<<<Grid,Block>>>(Dev_Q,N);
+    cudaDeviceSynchronize();
+    end = clock();
+    printf("GPU trans time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
+
+    cudaMemcpy(H_Q, Dev_Q, N * N * sizeof(double), cudaMemcpyDeviceToHost);
+    // show(H_Q,N);
+    
     sort_vector(H_Sum, N, H_Q);
 
     //抽出一半特征值
@@ -816,6 +911,19 @@ int main()
     double *A = new double[N * N];
     symmat(A, N);
     // show(A,N);
+// double A[100] =
+// {  -0.63636364,  0.54545455, -0.09090909,  0.45454545, -0.54545455, -0.00000000, -0.09090909,  0.36363636, -0.45454545, -0.72727273,
+//     0.54545455, -0.63636364,  0.54545455, -0.09090909,  0.45454545,  0.09090909, -0.00000000, -0.09090909,  0.36363636, -0.45454545,
+//    -0.09090909,  0.54545455, -0.63636364,  0.54545455, -0.09090909, -0.36363636,  0.09090909, -0.00000000, -0.09090909,  0.36363636,
+//     0.45454545, -0.09090909,  0.54545455, -0.63636364,  0.54545455,  0.45454545, -0.36363636,  0.09090909, -0.00000000, -0.09090909,
+//    -0.54545455,  0.45454545, -0.09090909,  0.54545455, -0.63636364,  0.72727273,  0.45454545, -0.36363636,  0.09090909, -0.00000000,
+//     0.00000000,  0.09090909, -0.36363636,  0.45454545,  0.72727273, -0.63636364,  0.54545455, -0.09090909,  0.45454545, -0.54545455,
+//    -0.09090909,  0.00000000,  0.09090909, -0.36363636,  0.45454545,  0.54545455, -0.63636364,  0.54545455, -0.09090909,  0.45454545,
+//     0.36363636, -0.09090909,  0.00000000,  0.09090909, -0.36363636, -0.09090909,  0.54545455, -0.63636364,  0.54545455, -0.09090909,
+//    -0.45454545,  0.36363636, -0.09090909,  0.00000000,  0.09090909,  0.45454545, -0.09090909,  0.54545455, -0.63636364,  0.54545455,
+//    -0.72727273, -0.45454545,  0.36363636, -0.09090909,  0.00000000, -0.54545455,  0.45454545, -0.09090909,  0.54545455, -0.63636364
+// };
+
 
     double *Dev_W_0 = new double[N];
     double *Dev_W_1 = new double[N];

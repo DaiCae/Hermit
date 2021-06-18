@@ -9,7 +9,8 @@
         "cmath": "cpp",
         "algorithm": "cpp",
         "random": "cpp",
-        "new": "cpp"
+        "new": "cpp",
+        "complex": "cpp"
     },
     "C_Cpp.errorSquiggles": "Enabled"
 }
