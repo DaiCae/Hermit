@@ -5,6 +5,7 @@
 #include <hip/hcc_detail/hip_complex.h>
 #include <math.h>
 #include <sys/time.h>
+#include "time.h"
 
 __global__ void transform_gpu(hipDoubleComplex *d_A, double *dev_A, int N, bool lower)
 {
@@ -80,17 +81,16 @@ void sort_vector(double A[], int N, double *q)
                 A[j + 1] = temp;
                 for (int k = 0; k < N; k++)
                 {
-                    temp = q[k * N + j];
-                    q[k * N + j] = q[k * N + j + 1];
-                    q[k * N + j + 1] = temp;
+                    temp = q[j * N + k];
+                    q[j * N + k] = q[(j + 1) * N + k];
+                    q[(j + 1) * N + k] = temp;
                 }
             }
         }
     }
 }
 
-// Householder（带特征向量）
-int Householder_vector(int n, double A[], double b[], double c[], double *Q)
+int Householder(int n, double A[], double b[], double c[], double *Q)
 {
     double mol, q, value, K;
     double *alpha = new double[n];
@@ -125,33 +125,40 @@ int Householder_vector(int n, double A[], double b[], double c[], double *Q)
         q -= alpha[i - 1] * mol;
         alpha[i - 1] = alpha[i - 1] - mol;
 
-
         // 求Q(i+1)矩阵（矩阵减矩阵）
-        for (int j = 0; j <= n-1; j++)
+        // for (int j = 0; j < n - 1; j++)
+        // {
+        //     value = 0.0;
+        //     for (int k = 0; k < i; k++)
+        //         value += Q[j * n + k] * alpha[k] / q;
+        //     b[j] = value;
+        // }
+        // for (int j = 0; j < n - 1; j++)
+        // {
+        //     for (int k = 0; k < i; k++)
+        //     {
+        //         Q[j * n + k] = Q[j * n + k] - b[j] * alpha[k];
+        //     }
+        // }
+
+        // 求Q(i+1)矩阵（矩阵减矩阵）转置
+        for (int j = 0; j < n - 1; j++)
         {
             value = 0.0;
             for (int k = 0; k < i; k++)
-                value += Q[j * n + k] * alpha[k] / q;
+                value += Q[k * n + j] * alpha[k] / q;
             b[j] = value;
         }
-
-        // printf("\n");
-        // for(int l=0;l<n;l++)
-        //     printf("%12.8lf,", b[l]);
-        // printf("\n\n");
-
-        for (int j = 0; j <= n-1; j++)
+        for (int j = 0; j < n - 1; j++)
         {
             for (int k = 0; k < i; k++)
             {
-                Q[j * n + k] = Q[j * n + k] - b[j] * alpha[k];
+                Q[k * n + j] = Q[k * n + j] - b[j] * alpha[k];
             }
         }
 
 
-
-
-       // 求A(i+1)矩阵
+        // 求A(i+1)矩阵
         for (int j = 0; j < i + 1; j++)
         {
             value = 0.0;
@@ -164,7 +171,6 @@ int Householder_vector(int n, double A[], double b[], double c[], double *Q)
         {
             K += alpha[j] * b[j] / (2 * q);
         }
-
         for (int j = 0; j < i + 1; j++)
         {
             c[j] = b[j] - K * alpha[j];
@@ -176,10 +182,8 @@ int Householder_vector(int n, double A[], double b[], double c[], double *Q)
                 A[j * n + k] = A[j * n + k] - alpha[j] * c[k] - c[j] * alpha[k];
             }
         }
-
-        // break;
     }
-    
+
     // 抽出主、次对角线元素
     for (int i = 0; i < n - 1; i++)
     {
@@ -200,12 +204,14 @@ int QR_vector(int N, double *b, double *c, double *q, double eps){
     
     double h, p, r;
     double f = 0.0;
+    c[N - 1] = 0.0;
     for (int k = 0; k <= N - 1; k++){
-        do{
+        do
+        {
             double g = b[k];
-            // (b[k+1] - b[k]) / (2 * c[k])
             p = (b[k + 1] - g) / (2.0 * c[k]);
             r = sqrt(p * p + 1.0);
+
             if (p >= 0.0)
                 b[k] = c[k] / (p + r);
             else
@@ -242,16 +248,17 @@ int QR_vector(int N, double *b, double *c, double *q, double eps){
                 }
                 p = e * b[i] - s * g;
                 b[i + 1] = h + s * (e * g + s * b[i]);
-                    //=======================
-                    for (int j = 0; j <= N - 1; j++)
-                    {
-                        int u = j * N + i + 1;
-                        int v = u - 1;
-                        h = q[u];
-                        q[u] = s * q[v] + e * h;
-                        q[v] = e * q[v] - s * h;
-                    }
-                    //=======================
+
+                //=======================
+                for (int j = 0; j <= N - 1; j++)
+                {
+                    int u = (i + 1) * N + j;
+                    int v = (i)*N + j;
+                    h = q[u];
+                    q[u] = s * q[v] + e * h;
+                    q[v] = e * q[v] - s * h;
+                }
+                //=======================
             }
             c[k] = s * p;
             b[k] = e * p;
@@ -259,99 +266,60 @@ int QR_vector(int N, double *b, double *c, double *q, double eps){
         
         b[k] = b[k] + f;
     }
-    //=======================
-    // for (int i = 0; i <= N - 1; i++)
-    // {
-    //     int k = i;
-    //     p = b[i];
-    //     if (i + 1 <= N - 1)
-    //     {
-    //         int j = i + 1;
-    //         while ((j <= N - 1) && (b[j] <= p))
-    //         {
-    //             k = j;
-    //             p = b[j];
-    //             j++;
-    //         }
-    //     }
-    //     if (k != i)
-    //     {
-    //         b[k] = b[i];
-    //         b[i] = p;
-    //         for (int j = 0; j <= N - 1; j++)
-    //         {
-    //             int u = j * N + i;
-    //             int v = j * N + k;
-    //             p = q[j * N + i];
-    //             q[j * N + i] = q[j * N + k];
-    //             q[j * N + k] = p;
-    //         }
-    //     }
-    // }
-    //=======================
     return (1);
 }
 
 //求解特征值和特征向量
 int mysolver_cpu_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
 {
-    //原矩阵
+    int l = 1000;
     double *a = new double[N * N];
     double *Qalpha = new double[N * N];
-    //主次对角线
+    double *Q = new double[N * N];
     double *b = new double[N];
     double *c = new double[N];
-    //
     double *y_l = new double[N * N];
     double eps = 1e-12;
-    double Eps = 1e-8;
+
     hipDoubleComplex *A_yl = (hipDoubleComplex *)malloc(N / 2 * N / 2 * sizeof(hipDoubleComplex));
     hipMemcpy(a, Dev_A, N * N * sizeof(double), hipMemcpyDeviceToHost);
-    
-    time_t start, end;
-    start = clock(); 
-    Householder_vector(N, a, b, c, Qalpha);
-    end = clock();
-    printf("HS CPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
-    
-    start = clock();
+
+    time_t start2, end2;
+    start2 = clock();
+    Householder(N, a, b, c, Qalpha);
+    end2 = clock();
+    printf("HS time=%lf\n", (double)(end2 - start2) / CLOCKS_PER_SEC);
+
+    time_t start3, end3;
+    start3 = clock();
     QR_vector(N, b, c, Qalpha, eps);
-    end = clock();
-    printf("QR CPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
+    end3 = clock();
+    printf("QR time=%lf\n", (double)(end3 - start3) / CLOCKS_PER_SEC);
 
+    // 对特征向量按行排序
+    time_t start4, end4;
+    start4 = clock();
     sort_vector(b, N, Qalpha);
+    end4 = clock();
+    printf("Sort time=%lf\n", (double)(end4 - start4) / CLOCKS_PER_SEC);
 
-
-    //抽出一半特征值
-    for (int i = 0; i < N / 2; i++)
-        c[i] = b[i * 2];
-
-    //抽出一半特征向量
-    // for (int i = 0; i < N / 2; i++)
-    // {
-    //     if (fabs(a[N * (N - 1) + i * 2]) >= Eps)
-    //     {
-    //         for (int j = 0; j < N; j++)
-    //         {
-    //             y_l[j * N + i] = Qalpha[j * N + i * 2];
-    //         }
-    //     }
-    //     else
-    //     {
-    //         for (int j = 0; j < N; j++)
-    //         {
-    //             y_l[j * N + i] = Qalpha[j * N + i * 2 + 1];
-    //         }
-    //     }
-    // }
-    for (int i = 0; i < N / 2; i++)
-    {    for(int j=0; j<N;j++){
-            y_l[j * N + i] = Qalpha[j * N + i * 2];
+    // 转置特征矩阵
+    for (int i = 0; i < N; i++)
+    {
+        for (int j = 0; j < N; j++)
+        {
+            Q[i * N + j] = Qalpha[j * N + i];
         }
     }
-
-
-    //实部虚部合并为复数
+    // 抽一半特征向量
+    for (int i = 0; i < N / 2; i++)
+    {
+        for (int j = 0; j < N; j++)
+        {
+            y_l[j * N + i] = Q[j * N + i * 2];
+        }
+    }
+    // 将实特征向量转换乘复特征向量
     for (int i = 0; i < N / 2; i++)
     {
         for (int j = 0; j < N / 2; j++)
@@ -360,130 +328,25 @@ int mysolver_cpu_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d
             A_yl[i * N / 2 + j].x = y_l[(N * N / 2) + i * N + j];
         }
     }
-
+    for (int i = 0; i < N / 2; i++)
+        c[i] = b[i * 2];
 
     //结果拷回
     hipMemcpy(Dev_W, c, N / 2 * sizeof(double), hipMemcpyHostToDevice);
-    hipMemcpy(d_A, A_yl, N * N / 2 * sizeof(double), hipMemcpyHostToDevice);
+    hipMemcpy(d_A, A_yl, N * N / 4 * sizeof(hipDoubleComplex), hipMemcpyHostToDevice);
 
     free(a);
     free(b);
+    free(Q);
     free(c);
     free(y_l);
     free(A_yl);
     return 1;
 }
 
-__global__ void QR_gpu_part(double *Q , double s, double e, int N, int i)
-{
-	int idx = threadIdx.x + blockIdx.x * blockDim.x;
-    // int idy = threadIdx.y + blockIdx.y * blockDim.y;
-    
-    //关闭多余线程
-    if (idx >= N) return;
-    // if (idy >= N) return;
-    
-    int u = idx * N + i + 1;
-    int v = u - 1;
-    double h = Q[u];
-    Q[u] = s * Q[v] + e * h;
-    Q[v] = e * Q[v] - s * h;
 
-    // double elem1 = Q[idx * N + i + 1];
-    // double elem2 = Q[idx * N + i];
-    // Q[idx * N + i + 1] = s * elem2 + e * elem1;
-    // Q[idx * N + i] = e * elem2 - s * elem1;
 
-    // //Q的转置求法
-    // int u = (i+1) * N + idx;
-    // int v = u - N;
-    // double h = Q[u];
-    // Q[u] = s * Q[v] + e * h;
-    // Q[v] = e * Q[v] - s * h;
 
-    // double elem1 = Q[(i+1) * N + idx];
-    // double elem2 = Q[i * N + idx];
-    // Q[(i+1) * N + idx] = s * elem2 + e * elem1;
-    // Q[i * N + idx] = e * elem2 - s * elem1;
-
-}
-
-//QR（带特征向量）
-int QR_vector_gpu(int N, double *b, double *c, double *Dev_Q, double eps){
-    // N 为矩阵阶数
-    // b[] 为主对角线元素
-    // c[] 为次对角线元素
-    
-    double h, p, r;
-    double f = 0.0;
-
-    time_t start0, end0;
-    double t0=0.0;
-    //定义N维向量的grid
-    dim3 block(1024);
-    dim3 grid((N-1)/block.x + 1,1);
-    
-    for (int k = 0; k <= N - 1; k++){
-        do{
-            double g = b[k];
-            // (b[k+1] - b[k]) / (2 * c[k])
-            p = (b[k + 1] - g) / (2.0 * c[k]);
-            r = sqrt(p * p + 1.0);
-            if (p >= 0.0)
-                b[k] = c[k] / (p + r);
-            else
-                b[k] = c[k] / (p - r);
-            h = g - b[k];
-
-            for (int i = k + 1; i <= N - 1; i++)
-                b[i] = b[i] - h;
-            f = f + h;
-
-            p = b[N-1];
-
-            double e = 1.0;
-            double s = 0.0;
-
-            for (int i = N - 2; i >= k; i--)
-            {
-                g = e * c[i];
-                h = e * p;
-                if (fabs(p) >= fabs(c[i]))
-                {
-                    e = c[i] / p;
-                    r = sqrt(e * e + 1.0);
-                    c[i + 1] = s * p * r;
-                    s = e / r;
-                    e = 1.0 / r;
-                }
-                else
-                {
-                    e = p / c[i];
-                    r = sqrt(e * e + 1.0);
-                    c[i + 1] = s * c[i] * r;
-                    s = 1.0 / r;
-                    e = e / r;
-                }
-                p = e * b[i] - s * g;
-                b[i + 1] = h + s * (e * g + s * b[i]);
-                    //=======================
-                    start0=clock();
-                    QR_gpu_part<<<grid,block>>>(Dev_Q, s, e, N, i);//调用核函数
-                    hipDeviceSynchronize();
-                    end0=clock();
-                    t0 +=(double)(end0 - start0) / CLOCKS_PER_SEC * 1000;
-                    //=======================
-            }
-            c[k] = s * p;
-            b[k] = e * p;
-        } while (fabs(c[k]) > eps);
-        
-        b[k] = b[k] + f;
-    }
-    printf("Gpu part time = %lf\n", t0);
-
-    return (1);
-}
 
 __global__ void Householder_step_0(double *Q , int N)
 {
@@ -583,29 +446,29 @@ __global__ void Householder_step_2_3(double *Q ,double *alpha, double *b, double
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
     if(idx >N-1) return;
     
-    // 求Q(i+1)矩阵（矩阵减矩阵）
-    double value = 0.0;
-    for (int k = 0; k < i; k++)
-        value += Q[idx * N + k] * alpha[k] / q;
-    b[idx] = value;
-        
-
-    for (int k = 0; k < i; k++)
-    {
-        Q[idx * N + k] = Q[idx * N + k] - b[idx] * alpha[k];
-    }
-
-    // //Q矩阵转置的求法
+    // // 求Q(i+1)矩阵（矩阵减矩阵）
     // double value = 0.0;
     // for (int k = 0; k < i; k++)
-    //     value += Q[k * N + idx] * alpha[k] / q;
+    //     value += Q[idx * N + k] * alpha[k] / q;
     // b[idx] = value;
         
 
     // for (int k = 0; k < i; k++)
     // {
-    //     Q[k * N + idx] = Q[k * N + idx] - b[idx] * alpha[k];
+    //     Q[idx * N + k] = Q[idx * N + k] - b[idx] * alpha[k];
     // }
+
+    //Q矩阵转置的求法
+    double value = 0.0;
+    for (int k = 0; k < i; k++)
+        value += Q[k * N + idx] * alpha[k] / q;
+    b[idx] = value;
+        
+
+    for (int k = 0; k < i; k++)
+    {
+        Q[k * N + idx] = Q[k * N + idx] - b[idx] * alpha[k];
+    }
     
 }
 
@@ -677,45 +540,6 @@ __global__ void Householder_step_5(double *A ,double *b, double *c, int N)
     }
 }
 
-__global__ void Matrix_transpose(double *Q ,int N)
-{
-	int idx = threadIdx.x + blockIdx.x * blockDim.x;
-    int idy = threadIdx.y + blockIdx.y * blockDim.y;
-
-    //关闭多余线程
-    if (idx >= N) return;
-    if (idy >= N) return;
-
-    double temp =Q[idx * N + idy];
-    __syncthreads();
-    Q[idy * N + idx] = temp;
-}
-
-__global__ void Matrix_transform(double *Q, hipDoubleComplex *d_A, int N)
-{
-	int idx = threadIdx.x + blockIdx.x * blockDim.x;
-    int idy = threadIdx.y + blockIdx.y * blockDim.y;
-
-    //关闭多余线程
-    if (idx >= N/2) return;
-    if (idy >= N/2) return;
-
-    int n = N/2;
-
-    double real = Q[ idx * N + idy * 2 ];
-    double imag = Q[ (N * n) + idx * N + idy * 2 ];
-
-    d_A[idx * n + idy].x=real;
-    d_A[idx * n + idy].y=imag;
-    
-    // if(idx < n){
-    //     d_A[idx * n + idy].y = Q[ idx * N + idy * 2 ];
-    // }else{
-    //     d_A[idx / 2 * n + idy].x = Q[ idx * N + idy * 2 ];
-    // }
-
-    __syncthreads();
-}
 
 
 
@@ -866,7 +690,7 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
 
     hipMemcpy(H_Sum, Dev_b, N * sizeof(double), hipMemcpyDeviceToHost);
     hipMemcpy(H_c, Dev_c, N * sizeof(double), hipMemcpyDeviceToHost);
-    // hipMemcpy(H_Q, Dev_Q, N * N * sizeof(double), hipMemcpyDeviceToHost);
+    hipMemcpy(H_Q, Dev_Q, N * N * sizeof(double), hipMemcpyDeviceToHost);
     
     end = clock();
     printf("HS GPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
@@ -877,10 +701,9 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
     // }
 
     start = clock();
-    QR_vector_gpu(N, H_Sum, H_c, Dev_Q, eps);
-    hipDeviceSynchronize();
+    QR_vector(N, H_Sum, H_c, H_Q, eps);
     end = clock();
-    printf("QR GPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
+    printf("QR CPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
 
     // start = clock();
     // Matrix_transpose<<<Grid,Block>>>(Dev_Q,N);
@@ -889,21 +712,45 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
     // printf("QR Trans time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
     
     start = clock();
-    hipMemcpy(H_Q, Dev_Q, N * N * sizeof(double), hipMemcpyDeviceToHost);
     sort_vector(H_Sum, N, H_Q);
     end = clock();
     printf("Sort time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
 
-    //抽出一半特征值
+    double *H_A = new double[N * N];
+    hipDoubleComplex *A_yl = (hipDoubleComplex *)malloc(N / 2 * N / 2 * sizeof(hipDoubleComplex));
+    
+    // 转置特征矩阵
+    for (int i = 0; i < N; i++)
+    {
+        for (int j = 0; j < N; j++)
+        {
+            H_A[i * N + j] = H_Q[j * N + i];
+        }
+    }
+    // 抽一半特征向量
+    for (int i = 0; i < N / 2; i++)
+    {
+        for (int j = 0; j < N; j++)
+        {
+            H_Q[j * N + i] = H_A[j * N + i * 2];
+        }
+    }
+    // 将实特征向量转换乘复特征向量
+    for (int i = 0; i < N / 2; i++)
+    {
+        for (int j = 0; j < N / 2; j++)
+        {
+            A_yl[i * N / 2 + j].y = H_Q[i * N + j];
+            A_yl[i * N / 2 + j].x = H_Q[(N * N / 2) + i * N + j];
+        }
+    }
     for (int i = 0; i < N / 2; i++)
         H_c[i] = H_Sum[i * 2];
-    
-    //特征值拷回
+
+    //结果拷回
     hipMemcpy(Dev_W, H_c, N / 2 * sizeof(double), hipMemcpyHostToDevice);
+    hipMemcpy(d_A, A_yl, N * N / 4 * sizeof(hipDoubleComplex), hipMemcpyHostToDevice);
 
-
-    hipMemcpy(Dev_Q, H_Q, N * N * sizeof(double), hipMemcpyHostToDevice);
-    Matrix_transform<<<Grid,Block>>>(Dev_Q,d_A,N);
 
 
     // double *y_l = new double[N * N];
@@ -936,10 +783,4 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
     hipFree(Dev_Q);
     return 1;
 }
-
-
-
-
-
-
 
