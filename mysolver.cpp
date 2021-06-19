@@ -253,7 +253,7 @@ int QR_vector(int N, double *b, double *c, double *q, double eps){
 
                 //=======================
                 // #pragma omp simd
-                #pragma omp parallel for 
+                // #pragma omp parallel for 
                 for (int j = 0; j <= N - 1; j++)
                 {
                     int u = (i + 1) * N + j;
@@ -409,9 +409,9 @@ __global__ void Householder_step_5(double *A ,double *b, double *c, int N)
 int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
 {
 
-    int omp_set_num_threads(8);
-    int T_num = omp_get_num_threads();
-    printf("Threads num: %d\n",T_num);
+    // int omp_set_num_threads(8);
+    // int T_num = omp_get_num_threads();
+    // printf("Threads num: %d\n",T_num);
 
     time_t start, end;
     start = clock();
@@ -585,6 +585,35 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
     double *H_A = new double[N * N];
     hipDoubleComplex *A_yl = (hipDoubleComplex *)malloc(N / 2 * N / 2 * sizeof(hipDoubleComplex));
     
+<<<<<<< HEAD
+=======
+//     // 转置特征矩阵
+//     for (int i = 0; i < N; i++)
+//     {
+//         for (int j = 0; j < N; j++)
+//         {
+//             H_A[i * N + j] = H_Q[j * N + i];
+//         }
+//     }
+//     // 抽一半特征向量
+//     for (int i = 0; i < N / 2; i++)
+//     {
+//         for (int j = 0; j < N; j++)
+//         {
+//             H_Q[j * N + i] = H_A[j * N + i * 2];
+//         }
+//     }
+//     // 将实特征向量转换乘复特征向量
+//     for (int i = 0; i < N / 2; i++)
+//     {
+//         for (int j = 0; j < N / 2; j++)
+//         {
+//             A_yl[i * N / 2 + j].y = H_Q[i * N + j];
+//             A_yl[i * N / 2 + j].x = H_Q[(N * N / 2) + i * N + j];
+//         }
+//     }
+
+>>>>>>> 8a264712984ac4c0e4d23b393656d35b3b0469a3
     // 将实特征向量(按行) 转换成复特征向量(按列)
     for (int i = 0; i < N / 2; i++)
     {
