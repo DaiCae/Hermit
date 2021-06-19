@@ -719,31 +719,42 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
     double *H_A = new double[N * N];
     hipDoubleComplex *A_yl = (hipDoubleComplex *)malloc(N / 2 * N / 2 * sizeof(hipDoubleComplex));
     
-    // 转置特征矩阵
-    for (int i = 0; i < N; i++)
-    {
-        for (int j = 0; j < N; j++)
-        {
-            H_A[i * N + j] = H_Q[j * N + i];
-        }
-    }
-    // 抽一半特征向量
-    for (int i = 0; i < N / 2; i++)
-    {
-        for (int j = 0; j < N; j++)
-        {
-            H_Q[j * N + i] = H_A[j * N + i * 2];
-        }
-    }
-    // 将实特征向量转换乘复特征向量
+//     // 转置特征矩阵
+//     for (int i = 0; i < N; i++)
+//     {
+//         for (int j = 0; j < N; j++)
+//         {
+//             H_A[i * N + j] = H_Q[j * N + i];
+//         }
+//     }
+//     // 抽一半特征向量
+//     for (int i = 0; i < N / 2; i++)
+//     {
+//         for (int j = 0; j < N; j++)
+//         {
+//             H_Q[j * N + i] = H_A[j * N + i * 2];
+//         }
+//     }
+//     // 将实特征向量转换乘复特征向量
+//     for (int i = 0; i < N / 2; i++)
+//     {
+//         for (int j = 0; j < N / 2; j++)
+//         {
+//             A_yl[i * N / 2 + j].y = H_Q[i * N + j];
+//             A_yl[i * N / 2 + j].x = H_Q[(N * N / 2) + i * N + j];
+//         }
+//     }
+
+    // 将实特征向量(按行) 转换成复特征向量(按列)
     for (int i = 0; i < N / 2; i++)
     {
         for (int j = 0; j < N / 2; j++)
         {
-            A_yl[i * N / 2 + j].y = H_Q[i * N + j];
-            A_yl[i * N / 2 + j].x = H_Q[(N * N / 2) + i * N + j];
+            A_yl[j * N / 2 + i].y = H_Q[i * 2 * N + j];
+            A_yl[j * N / 2 + i].x = H_Q[i * 2 * N + N/2 + j];
         }
     }
+
     for (int i = 0; i < N / 2; i++)
         H_c[i] = H_Sum[i * 2];
 
