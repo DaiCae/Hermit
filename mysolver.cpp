@@ -196,13 +196,109 @@ int Householder(int n, double A[], double b[], double c[], double *Q)
     return 1;
 }
 
+__global__ void QR_part(double *Q, double e, double s, int i, int N)
+{
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    // int idy = threadIdx.y + blockIdx.y * blockDim.y;
+    
+    //关闭多余线程
+    if (idx >= N) return;
+    // if (idy >= N) return;
+
+    // int u = (i + 1) * N + idx;
+    // int v = (i)*N + idx;
+    double h = Q[(i + 1) * N + idx];
+    Q[(i + 1) * N + idx] = s * Q[(i)*N + idx] + e * h;
+    Q[(i)*N + idx] = e * Q[(i)*N + idx] - s * h;
+
+}
+
 //QR（带特征向量）
+// int QR_vector(int N, double *b, double *c, double *q, double eps){
+int QR_vector_gpu(int N, double *b, double *c, double *Dev_Q, double eps){
+    // N 为矩阵阶数
+    // b[] 为主对角线元素
+    // c[] 为次对角线元素
+
+    //定义N维向量的grid
+    dim3 block(512);
+    dim3 grid((N-1)/block.x + 1,1);
+
+    double h, p, r;
+    double f = 0.0;
+    c[N - 1] = 0.0;
+    for (int k = 0; k <= N - 1; k++){
+        do
+        {
+            double g = b[k];
+            p = (b[k + 1] - g) / (2.0 * c[k]);
+            r = sqrt(p * p + 1.0);
+
+            if (p >= 0.0)
+                b[k] = c[k] / (p + r);
+            else
+                b[k] = c[k] / (p - r);
+            h = g - b[k];
+
+            for (int i = k + 1; i <= N - 1; i++)
+                b[i] = b[i] - h;
+            f = f + h;
+
+            p = b[N-1];
+
+            double e = 1.0;
+            double s = 0.0;
+            for (int i = N - 2; i >= k; i--)
+            {
+                g = e * c[i];
+                h = e * p;
+                if (fabs(p) >= fabs(c[i]))
+                {
+                    e = c[i] / p;
+                    r = sqrt(e * e + 1.0);
+                    c[i + 1] = s * p * r;
+                    s = e / r;
+                    e = 1.0 / r;
+                }
+                else
+                {
+                    e = p / c[i];
+                    r = sqrt(e * e + 1.0);
+                    c[i + 1] = s * c[i] * r;
+                    s = 1.0 / r;
+                    e = e / r;
+                }
+                p = e * b[i] - s * g;
+                b[i + 1] = h + s * (e * g + s * b[i]);
+
+                //=======================
+                // for (int j = 0; j <= N - 1; j++)
+                // {
+                //     int u = (i + 1) * N + j;
+                //     int v = (i)*N + j;
+                //     h = q[u];
+                //     q[u] = s * q[v] + e * h;
+                //     q[v] = e * q[v] - s * h;
+                // }
+                QR_part<<<grid,block>>>(Dev_Q,e,s,i,N);
+                hipDeviceSynchronize();
+                //=======================
+            }
+            c[k] = s * p;
+            b[k] = e * p;
+        } while (fabs(c[k]) > eps);
+        
+        b[k] = b[k] + f;
+    }
+    return (1);
+}
+
 int QR_vector(int N, double *b, double *c, double *q, double eps){
 
     // N 为矩阵阶数
     // b[] 为主对角线元素
     // c[] 为次对角线元素
-    
+
     double h, p, r;
     double f = 0.0;
     c[N - 1] = 0.0;
@@ -324,8 +420,8 @@ __global__ void Householder_step_Q(double *Q ,double *alpha, double *b, double q
     //Q矩阵转置的求法
     double value = 0.0;
     for (int k = 0; k < i; k++)
-        value += Q[k * N + idx] * alpha[k];
-    b[idx] = value  / q;
+        value += Q[k * N + idx] * alpha[k] / q;
+    b[idx] = value;
         
 
     for (int k = 0; k < i; k++)
@@ -350,11 +446,11 @@ __global__ void Householder_step_2(double *A, double *alpha, double *beta, doubl
 
     double value = 0.0;
     for (int k = 0; k < i + 1; k++)
-        value += A[k * N + idx] * alpha[k];
-    b[idx] = value / q;
+        value += A[k * N + idx] * alpha[k] / q;
+    b[idx] = value;
 
     // 求K
-    beta[idx] = alpha[idx] * value;
+    beta[idx] = alpha[idx] * value /(2 * q);
 }
 
 __global__ void Householder_step_3(double *alpha, double *b, double *c, double K, int N, int i)
@@ -431,7 +527,7 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
     hipMalloc((void **)&Dev_Q, N * N * sizeof(double));
 
     //定义N维向量的grid
-    dim3 block(64);
+    dim3 block(128);
     dim3 grid((N-1)/block.x + 1,1);
     
     printf("block size: %d | grid size: %d\n",block.x,grid.x);
@@ -514,11 +610,9 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
         Householder_step_2<<<grid,block>>>(Dev_A, Dev_alpha, Dev_beta, Dev_b, sum, N, i);//调用核函数
         hipDeviceSynchronize();
         hipMemcpy(H_Sum, Dev_beta, N * sizeof(double), hipMemcpyDeviceToHost);
-        double q =sum;
         sum = 0;
         for (int k = 0; k < N; k++)
             sum += H_Sum[k];    //sum 为 K
-        sum = sum / (2 * q);
         end0 =clock();
         t3 +=(double)(end0 - start0) / CLOCKS_PER_SEC * 1000;
 
@@ -564,6 +658,7 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
 
     start = clock();
     QR_vector(N, H_Sum, H_c, H_Q, eps);
+    // hipMemcpy(H_Q, Dev_Q, N * N * sizeof(double), hipMemcpyDeviceToHost);
     end = clock();
     printf("QR CPU time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
 
