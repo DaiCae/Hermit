@@ -5,7 +5,6 @@
 #include <hip/hcc_detail/hip_complex.h>
 #include <math.h>
 #include <sys/time.h>
-#include <omp.h>
 #include "time.h"
 
 __global__ void transform_gpu(hipDoubleComplex *d_A, double *dev_A, int N, bool lower)
@@ -252,8 +251,6 @@ int QR_vector(int N, double *b, double *c, double *q, double eps){
                 b[i + 1] = h + s * (e * g + s * b[i]);
 
                 //=======================
-                // #pragma omp simd
-                // #pragma omp parallel for 
                 for (int j = 0; j <= N - 1; j++)
                 {
                     int u = (i + 1) * N + j;
@@ -327,8 +324,8 @@ __global__ void Householder_step_Q(double *Q ,double *alpha, double *b, double q
     //Q矩阵转置的求法
     double value = 0.0;
     for (int k = 0; k < i; k++)
-        value += Q[k * N + idx] * alpha[k] / q;
-    b[idx] = value;
+        value += Q[k * N + idx] * alpha[k];
+    b[idx] = value  / q;
         
 
     for (int k = 0; k < i; k++)
@@ -353,11 +350,11 @@ __global__ void Householder_step_2(double *A, double *alpha, double *beta, doubl
 
     double value = 0.0;
     for (int k = 0; k < i + 1; k++)
-        value += A[k * N + idx] * alpha[k] / q;
-    b[idx] = value;
+        value += A[k * N + idx] * alpha[k];
+    b[idx] = value / q;
 
     // 求K
-    beta[idx] = alpha[idx] * value / (2 * q);
+    beta[idx] = alpha[idx] * value;
 }
 
 __global__ void Householder_step_3(double *alpha, double *b, double *c, double K, int N, int i)
@@ -409,9 +406,6 @@ __global__ void Householder_step_5(double *A ,double *b, double *c, int N)
 int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
 {
 
-    // int omp_set_num_threads(8);
-    // int T_num = omp_get_num_threads();
-    // printf("Threads num: %d\n",T_num);
 
     time_t start, end;
     start = clock();
@@ -443,7 +437,7 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
     printf("block size: %d | grid size: %d\n",block.x,grid.x);
     
     //计算需要的最小块数的长度取整
-    int length = (N-1)/32 + 1;
+    // int length = (N-1)/32 + 1;
 
     // //定义N维矩阵的grid
     // dim3 Block(16,16);
@@ -520,9 +514,11 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
         Householder_step_2<<<grid,block>>>(Dev_A, Dev_alpha, Dev_beta, Dev_b, sum, N, i);//调用核函数
         hipDeviceSynchronize();
         hipMemcpy(H_Sum, Dev_beta, N * sizeof(double), hipMemcpyDeviceToHost);
+        double q =sum;
         sum = 0;
         for (int k = 0; k < N; k++)
             sum += H_Sum[k];    //sum 为 K
+        sum = sum / (2 * q);
         end0 =clock();
         t3 +=(double)(end0 - start0) / CLOCKS_PER_SEC * 1000;
 
@@ -582,38 +578,8 @@ int mysolver_vector(int N, double *Dev_A, double *Dev_W, hipDoubleComplex *d_A)
     end = clock();
     printf("Sort time=%lf (ms)\n", (double)(end - start) / CLOCKS_PER_SEC * 1000);
 
-    double *H_A = new double[N * N];
     hipDoubleComplex *A_yl = (hipDoubleComplex *)malloc(N / 2 * N / 2 * sizeof(hipDoubleComplex));
     
-<<<<<<< HEAD
-=======
-//     // 转置特征矩阵
-//     for (int i = 0; i < N; i++)
-//     {
-//         for (int j = 0; j < N; j++)
-//         {
-//             H_A[i * N + j] = H_Q[j * N + i];
-//         }
-//     }
-//     // 抽一半特征向量
-//     for (int i = 0; i < N / 2; i++)
-//     {
-//         for (int j = 0; j < N; j++)
-//         {
-//             H_Q[j * N + i] = H_A[j * N + i * 2];
-//         }
-//     }
-//     // 将实特征向量转换乘复特征向量
-//     for (int i = 0; i < N / 2; i++)
-//     {
-//         for (int j = 0; j < N / 2; j++)
-//         {
-//             A_yl[i * N / 2 + j].y = H_Q[i * N + j];
-//             A_yl[i * N / 2 + j].x = H_Q[(N * N / 2) + i * N + j];
-//         }
-//     }
-
->>>>>>> 8a264712984ac4c0e4d23b393656d35b3b0469a3
     // 将实特征向量(按行) 转换成复特征向量(按列)
     for (int i = 0; i < N / 2; i++)
     {
